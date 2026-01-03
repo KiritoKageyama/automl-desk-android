@@ -72,8 +72,12 @@ public class IGPSO extends AbstractFeatureSelectionAlgorithm {
             var rand = ThreadLocalRandom.current();
             double[] pos = new double[numFeatures];
             double[] vel = new double[numFeatures];
+
+            // Chaotic Initialization (Logistic Map)
+            double chaoticValue = rand.nextDouble();
             for (int j = 0; j < numFeatures; j++) {
-                pos[j] = rand.nextDouble() < 0.5 ? 0 : 1;
+                chaoticValue = 4.0 * chaoticValue * (1.0 - chaoticValue);
+                pos[j] = chaoticValue < 0.5 ? 0 : 1;
                 vel[j] = -1 + (2 * rand.nextDouble());
             }
             double fit = calculateFitness(pos, classifier, folds);
@@ -104,11 +108,27 @@ public class IGPSO extends AbstractFeatureSelectionAlgorithm {
                                                                          // just new array
 
             // Re-calculate velocity and position
+            // Dynamic Parameters (TVAC & LTV-IW)
+            double progress = (double) iteration / maxIterations;
+            double currentW = 0.9 - (0.5 * progress); // 0.9 -> 0.4
+            double currentC1 = 2.5 - (2.0 * progress); // 2.5 -> 0.5
+            double currentC2 = 0.5 + (2.0 * progress); // 0.5 -> 2.5
+
+            // Re-calculate velocity and position
             for (int j = 0; j < numFeatures; j++) {
                 double r1 = rand.nextDouble(), r2 = rand.nextDouble();
-                double cognitive = c1 * r1 * (pBestPositions[i][j] - positions[i][j]);
-                double social = c2 * r2 * (gBestPosition[j] - positions[i][j]);
-                newVel[j] = (w * newVel[j]) + cognitive + social;
+                double cognitive = currentC1 * r1 * (pBestPositions[i][j] - positions[i][j]);
+                double social = currentC2 * r2 * (gBestPosition[j] - positions[i][j]);
+
+                double v = (currentW * newVel[j]) + cognitive + social;
+
+                // Velocity Clamping [-4.0, 4.0]
+                if (v > 4.0)
+                    v = 4.0;
+                else if (v < -4.0)
+                    v = -4.0;
+                newVel[j] = v;
+
                 double sigmoid = 1.0 / (1.0 + Math.exp(-newVel[j]));
                 newPos[j] = rand.nextDouble() < sigmoid ? 1.0 : 0.0;
             }
@@ -141,13 +161,14 @@ public class IGPSO extends AbstractFeatureSelectionAlgorithm {
         }
 
         int parent1Index = bestParticleIndex != -1 ? bestParticleIndex : 0;
-        int parent2Index = ThreadLocalRandom.current().nextInt(populationSize);
-        while (parent2Index == parent1Index)
-            parent2Index = ThreadLocalRandom.current().nextInt(populationSize);
+        int parent2Index = tournamentSelection(fitness, 3);
+
+        // Adaptive Mutation Rate
+        double currentMutationRate = 0.1 * Math.exp(-3.0 * ((double) iteration / maxIterations));
 
         if (ThreadLocalRandom.current().nextDouble() < crossoverRate) {
             double[] newChild = crossover(positions[parent1Index], positions[parent2Index]);
-            mutate(newChild);
+            mutate(newChild, currentMutationRate);
             // Evaluate child
             double childFitness = calculateFitness(newChild, classifier, folds);
 
@@ -185,11 +206,23 @@ public class IGPSO extends AbstractFeatureSelectionAlgorithm {
         return child;
     }
 
-    private void mutate(double[] solution) {
+    private void mutate(double[] solution, double currentMutationRate) {
         for (int i = 0; i < solution.length; i++) {
-            if (ThreadLocalRandom.current().nextDouble() < mutationRate) {
+            if (ThreadLocalRandom.current().nextDouble() < currentMutationRate) {
                 solution[i] = 1.0 - solution[i];
             }
         }
+    }
+
+    private int tournamentSelection(double[] fitness, int k) {
+        var rand = ThreadLocalRandom.current();
+        int bestId = rand.nextInt(populationSize);
+        for (int i = 1; i < k; i++) {
+            int nextId = rand.nextInt(populationSize);
+            if (fitness[nextId] > fitness[bestId]) {
+                bestId = nextId;
+            }
+        }
+        return bestId;
     }
 }
