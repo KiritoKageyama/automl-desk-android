@@ -1,15 +1,52 @@
 <?xml version="1.0" encoding="UTF-8"?>
 
 <?import javafx.geometry.Insets?>
+<?import javafx.scene.control.Button?>
 <?import javafx.scene.control.Label?>
+<?import javafx.scene.layout.HBox?>
 <?import javafx.scene.layout.VBox?>
+<?import javafx.scene.control.Separator?>
 
-<VBox xmlns:fx="http://javafx.com/fxml/1" alignment="CENTER" spacing="20"
+<VBox xmlns:fx="http://javafx.com/fxml/1" spacing="20" style="-fx-padding: 20;"
       fx:controller="com.example.automl_prototype_1.controller.SettingsViewController">
-    <padding>
-        <Insets bottom="20.0" left="20.0" right="20.0" top="20.0" />
-    </padding>
-    <Label style="-fx-font-size: 18px;" text="Settings" />
-    <Label text="Configuration options will go here..." />
-    <!-- Add cloud storage config, etc. -->
+
+    <Label styleClass="header-label" text="Settings"/>
+
+    <!-- Card for Theme Settings -->
+    <VBox spacing="10" styleClass="card" alignment="TOP_LEFT">
+        <padding>
+            <Insets bottom="20.0" left="30.0" right="30.0" top="20.0"/>
+        </padding>
+
+        <Label styleClass="sub-header-label" text="UI Theme"/>
+        <Separator/>
+        <Label text="Select your preferred application theme."/>
+
+        <HBox spacing="10" alignment="CENTER_LEFT" style="-fx-padding: 10 0 0 0;">
+            <Button fx:id="lightThemeButton" text="Switch to Light Mode"/>
+            <Button fx:id="darkThemeButton" text="Switch to Dark Mode" styleClass="button-accent"/>
+        </HBox>
+    </VBox>
+
+
+    <!-- Card for Performance Settings -->
+    <VBox spacing="10" styleClass="card" alignment="TOP_LEFT">
+        <padding>
+            <Insets bottom="20.0" left="30.0" right="30.0" top="20.0"/>
+        </padding>
+
+        <Label styleClass="sub-header-label" text="Performance"/>
+        <Separator/>
+        <Label text="Configure hardware acceleration and logging."/>
+
+        <VBox spacing="10">
+             <javafx.scene.control.CheckBox fx:id="chkUseGpu" text="Use GPU Acceleration (if available)"/>
+             <javafx.scene.control.ComboBox fx:id="cmbGpuSelector" promptText="Select GPU Device" prefWidth="350.0"/>
+             <javafx.scene.control.CheckBox fx:id="chkStandardization" text="Enable Data Standardization (Z-Score)"/>
+             <javafx.scene.control.CheckBox fx:id="chkBalancedOpt" text="Optimize for Balanced Accuracy (for Imbalanced Data)"/>
+             <javafx.scene.control.CheckBox fx:id="enableLoggingCheckBox" text="Enable Detailed Logging"/>
+             <javafx.scene.control.CheckBox fx:id="darkModeCheckBox" text="Auto-save results" visible="false"/>
+        </VBox>
+    </VBox>
+
 </VBox>

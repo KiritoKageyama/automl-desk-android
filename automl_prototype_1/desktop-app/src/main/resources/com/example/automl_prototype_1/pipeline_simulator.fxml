@@ -1,0 +1,129 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.geometry.Insets?>
+<?import javafx.scene.control.Accordion?>
+<?import javafx.scene.control.Button?>
+<?import javafx.scene.control.ComboBox?>
+<?import javafx.scene.control.Label?>
+<?import javafx.scene.control.ScrollPane?>
+<?import javafx.scene.control.SplitPane?>
+<?import javafx.scene.control.TableView?>
+<?import javafx.scene.control.TextArea?>
+<?import javafx.scene.control.TitledPane?>
+<?import javafx.scene.layout.HBox?>
+<?import javafx.scene.layout.VBox?>
+
+<ScrollPane fitToWidth="true" xmlns="http://javafx.com/javafx/17" xmlns:fx="http://javafx.com/fxml/1" fx:controller="com.example.automl_prototype_1.controller.PipelineSimulatorController">
+    <content>
+        <VBox spacing="15.0" styleClass="content-area">
+            <padding>
+                <Insets top="20.0" right="20.0" bottom="20.0" left="20.0"/>
+            </padding>
+            
+            <Label text="Data Pipeline Simulator" styleClass="header-label"/>
+            <Label text="Interactive Sandbox to visualize Data, Math, and Decisions." styleClass="sub-header-label" style="-fx-opacity: 0.7;"/>
+
+            <Accordion expandedPane="$dataPane">
+                <panes>
+                    <!-- STEP 1: Data Preprocessing -->
+                    <TitledPane fx:id="dataPane" text="Step 1: Data Preprocessing (Calculator)">
+                        <VBox spacing="10">
+                            <HBox spacing="10" alignment="CENTER_LEFT">
+                                <Label text="Dataset:"/>
+                                <Label fx:id="datasetNameLabel" text="[Selected in Dashboard]" style="-fx-font-weight: bold;"/>
+                                <Label text="Scaling:"/>
+                                <ComboBox fx:id="scalingCombo" prefWidth="150"/>
+                                <Button text="Simulate Scaling" onAction="#handleSimulateScaling" styleClass="button-accent"/>
+                            </HBox>
+                            
+                            <SplitPane dividerPositions="0.5" prefHeight="300">
+                                <VBox>
+                                    <Label text="Raw Data (First 10 Rows)" styleClass="sub-header-label"/>
+                                    <TableView fx:id="rawTable" VBox.vgrow="ALWAYS"/>
+                                </VBox>
+                                <VBox>
+                                    <Label text="Transformed Data (First 10 Rows)" styleClass="sub-header-label"/>
+                                    <TableView fx:id="transformedTable" VBox.vgrow="ALWAYS"/>
+                                </VBox>
+                            </SplitPane>
+                            
+                            <Label text="Transformation Logic:" styleClass="sub-header-label"/>
+                            <TextArea fx:id="transformationExplanation" editable="false" prefHeight="80" wrapText="true"/>
+                        </VBox>
+                    </TitledPane>
+
+                    <!-- STEP 2: Algorithm Math -->
+                    <TitledPane text="Step 2: Algorithm Logic (The Search)">
+                        <VBox spacing="10">
+                             <HBox spacing="10" alignment="CENTER_LEFT">
+                                <Label text="Algorithm:"/>
+                                <ComboBox fx:id="algoCombo" prefWidth="200"/>
+                                <Button text="Show Formula" onAction="#handleShowAlgoLogic" styleClass="button"/>
+                             </HBox>
+                             
+                             <VBox styleClass="card" spacing="5">
+                                <Label text="Core Formula" styleClass="sub-header-label"/>
+                                <Label fx:id="algoFormula" text="..." style="-fx-font-family: 'Consolas'; -fx-font-size: 14px; -fx-text-fill: -color-primary;"/>
+                                
+                                <Label text="Process Description" styleClass="sub-header-label"/>
+                                <Label fx:id="algoDescription" text="..." wrapText="true"/>
+                                
+                                <Label text="Sample Output (Feature Mask)" styleClass="sub-header-label"/>
+                                <Label fx:id="algoOutput" text="..." style="-fx-font-family: 'Consolas';"/>
+                             </VBox>
+                        </VBox>
+                    </TitledPane>
+
+                    <!-- STEP 3: Classifier Logic -->
+                    <TitledPane text="Step 3: Classifier Logic (The Model)">
+                        <VBox spacing="10">
+                             <HBox spacing="10" alignment="CENTER_LEFT">
+                                <Label text="Classifier:"/>
+                                <ComboBox fx:id="classifierCombo" prefWidth="200"/>
+                                <Button text="Show Logic" onAction="#handleShowClassifierLogic" styleClass="button"/>
+                             </HBox>
+                             
+                             <VBox styleClass="card" spacing="5">
+                                <Label text="Decision Function" styleClass="sub-header-label"/>
+                                <Label fx:id="classifierFunction" text="..." style="-fx-font-family: 'Consolas'; -fx-font-size: 14px; -fx-text-fill: -color-primary;"/>
+                                
+                                <Label text="Loss Formula" styleClass="sub-header-label"/>
+                                <Label fx:id="classifierLoss" text="..." style="-fx-font-family: 'Consolas';"/>
+                                
+                                <Label text="Sample Output" styleClass="sub-header-label"/>
+                                <Label fx:id="classifierOutput" text="..." style="-fx-font-family: 'Consolas';"/>
+                             </VBox>
+                        </VBox>
+                    </TitledPane>
+                    
+                    <!-- STEP 4: Tuning Logic -->
+                    <TitledPane text="Step 4: Hyperparameter Tuning (Optimization)">
+                        <VBox spacing="10">
+                             <Button text="Show Tuning Logic" onAction="#handleShowTuningLogic" styleClass="button"/>
+                             
+                             <VBox styleClass="card" spacing="5">
+                                <Label text="Strategy" styleClass="sub-header-label"/>
+                                <Label fx:id="tuningStrategy" text="..." />
+                                
+                                <Label text="Parameter Distribution" styleClass="sub-header-label"/>
+                                <Label fx:id="tuningFormula" text="..." style="-fx-font-family: 'Consolas'; -fx-text-fill: -color-primary;"/>
+                                
+                                <Label text="Sample Optimization Log" styleClass="sub-header-label"/>
+                                <TextArea fx:id="tuningOutput" editable="false" prefHeight="100" style="-fx-font-family: 'Consolas';"/>
+                             </VBox>
+                        </VBox>
+                    </TitledPane>
+
+                    <!-- STEP 5: Performance Estimation -->
+                    <TitledPane text="Step 5: Performance &amp; Cost Estimation (New)">
+                        <VBox spacing="10">
+                             <Button text="Calculate Estimate" onAction="#handleCalculateEstimation" styleClass="button-accent"/>
+                             <TextArea fx:id="estimationOutput" editable="false" prefHeight="100" style="-fx-font-family: 'Consolas';"/>
+                        </VBox>
+                    </TitledPane>
+                </panes>
+            </Accordion>
+            
+        </VBox>
+    </content>
+</ScrollPane>

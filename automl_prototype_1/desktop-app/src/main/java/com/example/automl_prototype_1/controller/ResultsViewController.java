@@ -7,20 +7,22 @@ import com.fasterxml.jackson.databind.SerializationFeature;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
 import javafx.fxml.FXML;
-import javafx.fxml.Initializable; // Import Initializable
-import javafx.scene.chart.BarChart;
-import javafx.scene.chart.CategoryAxis;
+import javafx.fxml.Initializable;
+import javafx.scene.chart.LineChart;
 import javafx.scene.chart.NumberAxis;
 import javafx.scene.chart.XYChart;
 import javafx.scene.control.Alert;
 import javafx.scene.control.Button;
 import javafx.scene.control.Label;
-import javafx.scene.control.TableCell; // <-- ADDED IMPORT
+import javafx.scene.control.TableCell;
 import javafx.scene.control.TableColumn;
 import javafx.scene.control.TableView;
 import javafx.scene.control.cell.PropertyValueFactory;
 import javafx.stage.FileChooser;
 import javafx.stage.Stage;
+import javafx.scene.layout.GridPane;
+import javafx.scene.chart.BarChart;
+import javafx.geometry.Pos;
 
 import java.io.File;
 import java.io.FileWriter;
@@ -30,167 +32,322 @@ import java.text.DecimalFormat;
 import java.util.List;
 import java.util.Locale;
 import java.util.ResourceBundle;
-import java.util.stream.Collectors;
+import java.util.Comparator;
 
 public class ResultsViewController implements Initializable {
 
     // --- FXML Injected Fields ---
-    // Ensure these fx:id values EXACTLY match your results_view.fxml file
-    @FXML private TableView<ExecutionResult> resultsTable;
-    @FXML private TableColumn<ExecutionResult, String> algoCol;
-    @FXML private TableColumn<ExecutionResult, Double> accuracyCol;
-    @FXML private TableColumn<ExecutionResult, Double> aucCol;
-    @FXML private TableColumn<ExecutionResult, Double> lossCol;
-    @FXML private TableColumn<ExecutionResult, Long> timeCol;
-    @FXML private Button exportButton;
-    @FXML private Button saveButton;
-    // --- FIX: Match FXML fx:id ---
-    @FXML private BarChart<String, Number> resultsChart; // <-- RENAMED to match FXML
-    // -----------------------------
-    @FXML private CategoryAxis chartXAxis; // fx:id from FXML
-    @FXML private NumberAxis chartYAxis; // fx:id from FXML
-    @FXML private Label noResultsLabel; // Optional: Label fx:id="noResultsLabel"
+    @FXML
+    private TableView<ExecutionResult> resultsTable;
+    @FXML
+    private TableColumn<ExecutionResult, String> algoCol;
+    @FXML
+    private TableColumn<ExecutionResult, Double> accuracyCol;
+    @FXML
+    private TableColumn<ExecutionResult, Double> precisionCol;
+    @FXML
+    private TableColumn<ExecutionResult, Double> recallCol;
+    @FXML
+    private TableColumn<ExecutionResult, Double> f1Col;
+    @FXML
+    private TableColumn<ExecutionResult, Double> originalFeaturesCol;
+    @FXML
+    private TableColumn<ExecutionResult, Double> selectedFeaturesCol;
+    @FXML
+    private TableColumn<ExecutionResult, Long> timeCol;
+    @FXML
+    private Button exportButton;
+    @FXML
+    private Button saveButton;
+    @FXML
+    private Button viewReportButton;
+    @FXML
+    private LineChart<Number, Number> resultsChart;
+    @FXML
+    private LineChart<Number, Number> lossChart;
+    @FXML
+    private NumberAxis chartXAxis;
+    @FXML
+    private NumberAxis chartYAxis;
+    @FXML
+    private Label bestAccuracyLabel;
+    @FXML
+    private Label bestAlgoLabel;
+    @FXML
+    private Label avgFeaturesLabel;
+    @FXML
+    private Label originalFeaturesLabel;
+    @FXML
+    private Label totalTimeLabel;
+
+    @FXML
+    private GridPane confusionMatrixGrid;
+    @FXML
+    private BarChart<String, Number> performanceChart;
 
     // --- Services and Helpers ---
     private final AppStateService appStateService = AppStateService.getInstance();
     private final ObjectMapper objectMapper = new ObjectMapper().enable(SerializationFeature.INDENT_OUTPUT);
-    private final DecimalFormat formatter = new DecimalFormat("#.####"); // Format to 4 decimal places
+    private final DecimalFormat formatter = new DecimalFormat("#.####");
+
+    public ResultsViewController() {
+        // No-arg constructor
+    }
 
     @Override
     public void initialize(URL url, ResourceBundle resourceBundle) {
-        System.out.println("Results View Initializing...");
         setupTableColumns();
         saveButton.setOnAction(e -> handleSaveJson());
         exportButton.setOnAction(e -> handleExport());
-        configureChart(); // Separate method for chart setup
-        loadAndDisplayResults(); // Load data last
-        System.out.println("Results View Initialized Successfully.");
+        configureChart();
+
+        // Add listener for table selection
+        resultsTable.getSelectionModel().selectedItemProperty().addListener((obs, oldSelection, newSelection) -> {
+            if (newSelection != null) {
+                populateConfusionMatrix(newSelection);
+                // Optionally highlight the selected algo in charts
+            }
+        });
+
+        loadAndDisplayResults();
     }
 
     private void setupTableColumns() {
-        System.out.println("Setting up table columns...");
         algoCol.setCellValueFactory(new PropertyValueFactory<>("algorithmName"));
         accuracyCol.setCellValueFactory(new PropertyValueFactory<>("accuracy"));
-        aucCol.setCellValueFactory(new PropertyValueFactory<>("aucRoc"));
-        lossCol.setCellValueFactory(new PropertyValueFactory<>("loss"));
+        precisionCol.setCellValueFactory(new PropertyValueFactory<>("precision"));
+        recallCol.setCellValueFactory(new PropertyValueFactory<>("recall"));
+        f1Col.setCellValueFactory(new PropertyValueFactory<>("f1Score"));
+        originalFeaturesCol.setCellValueFactory(new PropertyValueFactory<>("originalFeatures"));
+        selectedFeaturesCol.setCellValueFactory(new PropertyValueFactory<>("selectedFeatures"));
         timeCol.setCellValueFactory(new PropertyValueFactory<>("executionTimeMs"));
 
         // Assign cell factories for formatting
         accuracyCol.setCellFactory(tc -> createDoubleFormattingCell());
-        aucCol.setCellFactory(tc -> createDoubleFormattingCell());
-        lossCol.setCellFactory(tc -> createDoubleFormattingCell());
+        precisionCol.setCellFactory(tc -> createDoubleFormattingCell());
+        recallCol.setCellFactory(tc -> createDoubleFormattingCell());
+        f1Col.setCellFactory(tc -> createDoubleFormattingCell());
 
         // Set numeric columns to right alignment
         accuracyCol.setStyle("-fx-alignment: CENTER-RIGHT;");
-        aucCol.setStyle("-fx-alignment: CENTER-RIGHT;");
-        lossCol.setStyle("-fx-alignment: CENTER-RIGHT;");
+        precisionCol.setStyle("-fx-alignment: CENTER-RIGHT;");
+        recallCol.setStyle("-fx-alignment: CENTER-RIGHT;");
+        f1Col.setStyle("-fx-alignment: CENTER-RIGHT;");
+        originalFeaturesCol.setStyle("-fx-alignment: CENTER-RIGHT;");
+        selectedFeaturesCol.setStyle("-fx-alignment: CENTER-RIGHT;");
         timeCol.setStyle("-fx-alignment: CENTER-RIGHT;");
     }
 
-    /**
-     * Creates a TableCell that formats Double values using the predefined formatter.
-     * Handles null and NaN values gracefully.
-     * @return A configured TableCell for Double values.
-     */
     private TableCell<ExecutionResult, Double> createDoubleFormattingCell() {
-        // Use lambda expression for concise cell factory creation
         return new TableCell<ExecutionResult, Double>() {
-            @Override // Override annotation is correct here
+            @Override
             protected void updateItem(Double item, boolean empty) {
-                super.updateItem(item, empty); // Always call super
+                super.updateItem(item, empty);
                 if (empty || item == null || item.isNaN()) {
-                    setText(null); // Display nothing if empty, null, or NaN
+                    setText(null);
                 } else {
-                    setText(formatter.format(item)); // Format valid numbers
+                    setText(formatter.format(item));
                 }
             }
-        }; // End of anonymous TableCell class
+        };
     }
 
-    /**
-     * Configures the basic appearance of the BarChart.
-     */
     private void configureChart() {
-        resultsChart.setTitle("Algorithm Performance Comparison");
-        chartXAxis.setLabel("Algorithm");
-        chartYAxis.setLabel("Accuracy"); // Default Y-axis label
+        resultsChart.setTitle("Convergence Plot (Fitness vs Iteration)");
+        chartXAxis.setLabel("Iteration");
+        chartYAxis.setLabel("Fitness");
         resultsChart.setAnimated(false);
-        resultsChart.getData().clear();  // Ensure chart is clear initially
+        resultsChart.getData().clear();
+
+        performanceChart.setTitle("Algorithm Performance Comparison");
+        performanceChart.getYAxis().setLabel("Score (0.0 - 1.0)");
+        performanceChart.setAnimated(false);
+
+        lossChart.setTitle("Loss over Time (1 - Fitness)");
+        lossChart.getXAxis().setLabel("Iteration");
+        lossChart.getYAxis().setLabel("Loss");
+        lossChart.setAnimated(false);
+        lossChart.getData().clear();
     }
 
-    /**
-     * Fetches results from AppStateService and updates the TableView and BarChart.
-     */
     private void loadAndDisplayResults() {
-        System.out.println("Fetching results from AppStateService...");
         List<ExecutionResult> results = appStateService.getExecutionResults();
 
-        // Clear previous data
         resultsTable.getItems().clear();
-        resultsChart.getData().clear(); // Use correct chart variable name
+        resultsChart.getData().clear();
+        lossChart.getData().clear();
+        performanceChart.getData().clear();
+        confusionMatrixGrid.getChildren().clear();
 
         if (results != null && !results.isEmpty()) {
-            System.out.println("Found " + results.size() + " results. Populating UI.");
             ObservableList<ExecutionResult> observableResults = FXCollections.observableArrayList(results);
             resultsTable.setItems(observableResults);
             populateChart(observableResults);
+            populatePerformanceChart(observableResults);
 
-            // Hide the "No results" label/placeholder
-            resultsTable.setPlaceholder(null);
-            if (noResultsLabel != null) {
-                noResultsLabel.setVisible(false);
-                noResultsLabel.setManaged(false);
+            // Populate Stat Cards
+            ExecutionResult bestResult = results.stream()
+                    .max(Comparator.comparingDouble(ExecutionResult::getAccuracy))
+                    .orElse(null);
+
+            if (bestResult != null) {
+                bestAccuracyLabel.setText(String.format("%.2f%%", bestResult.getAccuracy() * 100));
+                bestAlgoLabel.setText("Algorithm: " + bestResult.getAlgorithmName());
+                originalFeaturesLabel.setText("Original: " + bestResult.getOriginalFeatures());
+
+                // Select best result by default to show its confusion matrix
+                resultsTable.getSelectionModel().select(bestResult);
             }
 
+            double avgSelected = results.stream()
+                    .filter(r -> r.getSelectedFeatures() > 0)
+                    .mapToInt(ExecutionResult::getSelectedFeatures)
+                    .average().orElse(0.0);
+
+            long totalTimeMs = results.stream().mapToLong(ExecutionResult::getExecutionTimeMs).sum();
+
+            avgFeaturesLabel.setText(String.format("%.1f", avgSelected));
+            totalTimeLabel.setText(String.format("%.2f", totalTimeMs / 1000.0));
+            resultsTable.setPlaceholder(null);
         } else {
-            System.out.println("No results found in AppStateService to display.");
-            // Show the "No results" label/placeholder
-            if (noResultsLabel != null) {
-                noResultsLabel.setVisible(true);
-                noResultsLabel.setManaged(true);
-            } else {
-                resultsTable.setPlaceholder(new Label("No results to display. Run a model first."));
+            bestAccuracyLabel.setText("N/A");
+            resultsTable.setPlaceholder(new Label("No results to display. Run a model first."));
+        }
+    }
+
+    private void populateChart(ObservableList<ExecutionResult> results) {
+        for (ExecutionResult result : results) {
+            List<Double> history = result.getFitnessHistory();
+            if (history != null && !history.isEmpty()) {
+                // Fitness Series
+                XYChart.Series<Number, Number> fitnessSeries = new XYChart.Series<>();
+                fitnessSeries.setName(result.getAlgorithmName());
+
+                // Loss Series
+                XYChart.Series<Number, Number> lossSeries = new XYChart.Series<>();
+                lossSeries.setName(result.getAlgorithmName());
+
+                for (int i = 0; i < history.size(); i++) {
+                    double fitness = history.get(i);
+                    fitnessSeries.getData().add(new XYChart.Data<>(i + 1, fitness));
+                    lossSeries.getData().add(new XYChart.Data<>(i + 1, 1.0 - fitness));
+                }
+                resultsChart.getData().add(fitnessSeries);
+                lossChart.getData().add(lossSeries);
             }
         }
     }
 
-    /**
-     * Populates the BarChart with Accuracy data from the results.
-     * @param results The ObservableList of ExecutionResult objects.
-     */
-    private void populateChart(ObservableList<ExecutionResult> results) {
-        System.out.println("Populating performance chart...");
-        chartYAxis.setLabel("Accuracy"); // Set axis label
-
+    private void populatePerformanceChart(ObservableList<ExecutionResult> results) {
         XYChart.Series<String, Number> accuracySeries = new XYChart.Series<>();
         accuracySeries.setName("Accuracy");
 
+        XYChart.Series<String, Number> precisionSeries = new XYChart.Series<>();
+        precisionSeries.setName("Precision");
+
+        XYChart.Series<String, Number> recallSeries = new XYChart.Series<>();
+        recallSeries.setName("Recall");
+
+        XYChart.Series<String, Number> f1Series = new XYChart.Series<>();
+        f1Series.setName("F1-Score");
+
         for (ExecutionResult result : results) {
-            if (!Double.isNaN(result.getAccuracy())) {
-                accuracySeries.getData().add(
-                        new XYChart.Data<>(result.getAlgorithmName(), result.getAccuracy())
-                );
-            } else {
-                System.out.println("Skipping chart data point for " + result.getAlgorithmName() + " due to NaN accuracy.");
+            String algoName = result.getAlgorithmName();
+            accuracySeries.getData().add(new XYChart.Data<>(algoName, result.getAccuracy()));
+            precisionSeries.getData().add(new XYChart.Data<>(algoName, result.getPrecision()));
+            recallSeries.getData().add(new XYChart.Data<>(algoName, result.getRecall()));
+            f1Series.getData().add(new XYChart.Data<>(algoName, result.getF1Score()));
+        }
+
+        performanceChart.getData()
+                .addAll(java.util.Arrays.asList(accuracySeries, precisionSeries, recallSeries, f1Series));
+    }
+
+    private void populateConfusionMatrix(ExecutionResult result) {
+        confusionMatrixGrid.getChildren().clear();
+        int[][] matrix = result.getConfusionMatrix();
+
+        if (matrix == null || matrix.length == 0) {
+            confusionMatrixGrid.add(new Label("No Confusion Matrix available"), 0, 0);
+            return;
+        }
+
+        int numClasses = matrix.length;
+
+        // Add Headers
+        for (int i = 0; i < numClasses; i++) {
+            Label predHeader = new Label("Pred " + i);
+            predHeader.setStyle("-fx-font-weight: bold;");
+            confusionMatrixGrid.add(predHeader, i + 1, 0);
+
+            Label trueHeader = new Label("True " + i);
+            trueHeader.setStyle("-fx-font-weight: bold;");
+            confusionMatrixGrid.add(trueHeader, 0, i + 1);
+        }
+
+        // Find max value for color scaling
+        int maxVal = 0;
+        for (int[] row : matrix) {
+            for (int val : row) {
+                if (val > maxVal)
+                    maxVal = val;
             }
         }
 
-        if (!accuracySeries.getData().isEmpty()) {
-            // --- FIX: Use correct chart variable name ---
-            resultsChart.getData().add(accuracySeries);
-            // -----------------------------------------
-            System.out.println("Added accuracy series to chart with " + accuracySeries.getData().size() + " data points.");
-        } else {
-            System.out.println("No valid accuracy data to display in chart.");
+        // Populate Cells
+        for (int i = 0; i < numClasses; i++) {
+            for (int j = 0; j < numClasses; j++) {
+                int value = matrix[i][j];
+                Label cell = new Label(String.valueOf(value));
+                cell.setMinSize(40, 40);
+                cell.setAlignment(Pos.CENTER); // Use Pos.CENTER
+
+                // Color scaling (Green for diagonal, Red for errors)
+                String color;
+                double intensity = (double) value / (maxVal > 0 ? maxVal : 1);
+                if (i == j) {
+                    // Diagonal (Correct) - Shades of Green
+                    int green = (int) (150 + (105 * intensity));
+                    color = String.format("rgb(0, %d, 0)", green);
+                    cell.setStyle("-fx-background-color: " + color + "; -fx-text-fill: white; -fx-border-color: #ddd;");
+                } else {
+                    // Off-diagonal (Error) - Shades of Red
+                    if (value > 0) {
+                        int red = (int) (150 + (105 * intensity));
+                        color = String.format("rgb(%d, 0, 0)", red);
+                        cell.setStyle(
+                                "-fx-background-color: " + color + "; -fx-text-fill: white; -fx-border-color: #ddd;");
+                    } else {
+                        cell.setStyle("-fx-background-color: white; -fx-text-fill: black; -fx-border-color: #ddd;");
+                    }
+                }
+
+                confusionMatrixGrid.add(cell, j + 1, i + 1);
+            }
         }
     }
 
-    // --- Action Handlers for Buttons ---
+    @FXML
+    private void handleViewReport() {
+        String report = com.example.automl_prototype_1.service.LogService.getInstance().generateReport();
+
+        Stage reportStage = new Stage();
+        reportStage.setTitle("Execution Detail Report");
+
+        javafx.scene.control.TextArea textArea = new javafx.scene.control.TextArea(report);
+        textArea.setEditable(false);
+        textArea.setWrapText(true);
+        textArea.setStyle("-fx-font-family: 'Consolas', 'Monospaced'; -fx-font-size: 12px;");
+
+        javafx.scene.layout.StackPane root = new javafx.scene.layout.StackPane(textArea);
+        javafx.scene.Scene scene = new javafx.scene.Scene(root, 800, 600);
+
+        reportStage.setScene(scene);
+        reportStage.show();
+    }
 
     @FXML
     private void handleSaveJson() {
-        // ... (Implementation remains the same) ...
-        System.out.println("Save Results (JSON) button clicked.");
         ObservableList<ExecutionResult> results = resultsTable.getItems();
         if (results == null || results.isEmpty()) {
             showAlert(Alert.AlertType.WARNING, "Save Error", "No results available to save.");
@@ -209,10 +366,8 @@ public class ResultsViewController implements Initializable {
             }
             try {
                 objectMapper.writeValue(file, results);
-                showAlert(Alert.AlertType.INFORMATION, "Save Successful", "Results saved to:\n" + file.getAbsolutePath());
-            } catch (IOException e) {
-                e.printStackTrace();
-                showAlert(Alert.AlertType.ERROR, "Save Failed", "Could not save results to file:\n" + e.getMessage());
+                showAlert(Alert.AlertType.INFORMATION, "Save Successful",
+                        "Results saved to:\n" + file.getAbsolutePath());
             } catch (Exception e) {
                 e.printStackTrace();
                 showAlert(Alert.AlertType.ERROR, "Save Failed", "Error during JSON serialization:\n" + e.getMessage());
@@ -222,8 +377,6 @@ public class ResultsViewController implements Initializable {
 
     @FXML
     private void handleExport() {
-        // ... (Implementation remains the same) ...
-        System.out.println("Export Report button clicked.");
         ObservableList<ExecutionResult> results = resultsTable.getItems();
         if (results == null || results.isEmpty()) {
             showAlert(Alert.AlertType.WARNING, "Export Error", "No results available to export.");
@@ -238,38 +391,55 @@ public class ResultsViewController implements Initializable {
         File file = fileChooser.showSaveDialog(getStage());
         if (file != null) {
             if (!file.getName().toLowerCase().endsWith(".csv")) {
-                file = new File(file.getParentFile(), file.getName() + ".csv"); // Corrected extension
+                file = new File(file.getParentFile(), file.getName() + ".csv");
             }
             try (FileWriter writer = new FileWriter(file)) {
-                List<String> headers = resultsTable.getColumns().stream()
-                        .map(TableColumn::getText)
-                        .collect(Collectors.toList());
-                writer.append(String.join(",", headers));
-                writer.append("\n");
+                // Write Header
+                writer.append(
+                        "Algorithm,Accuracy,Precision,Recall,F1-Score,Original Features,Selected Features,Execution Time (ms)\n");
 
+                // Write Data
                 for (ExecutionResult result : results) {
                     writer.append(escapeCsv(result.getAlgorithmName())).append(",");
                     writer.append(formatCsvDouble(result.getAccuracy())).append(",");
-                    writer.append(formatCsvDouble(result.getAucRoc())).append(",");
-                    writer.append(formatCsvDouble(result.getLoss())).append(",");
+                    writer.append(formatCsvDouble(result.getPrecision())).append(",");
+                    writer.append(formatCsvDouble(result.getRecall())).append(",");
+                    writer.append(formatCsvDouble(result.getF1Score())).append(",");
+                    writer.append(String.valueOf(result.getOriginalFeatures())).append(",");
+                    writer.append(String.valueOf(result.getSelectedFeatures())).append(",");
                     writer.append(String.valueOf(result.getExecutionTimeMs()));
                     writer.append("\n");
                 }
                 writer.flush();
-                showAlert(Alert.AlertType.INFORMATION, "Export Successful", "Results exported to:\n" + file.getAbsolutePath());
+                showAlert(Alert.AlertType.INFORMATION, "Export Successful",
+                        "Results exported to:\n" + file.getAbsolutePath());
 
             } catch (IOException e) {
                 e.printStackTrace();
-                showAlert(Alert.AlertType.ERROR, "Export Failed", "Could not export results to CSV file:\n" + e.getMessage());
+                showAlert(Alert.AlertType.ERROR, "Export Failed",
+                        "Could not export results to CSV file:\n" + e.getMessage());
             }
         }
     }
 
-    // --- Helper Methods ---
+    private Runnable onBackAction;
+
+    public void setOnBackAction(Runnable onBackAction) {
+        this.onBackAction = onBackAction;
+    }
+
+    @FXML
+    private void handleBack() {
+        if (onBackAction != null) {
+            onBackAction.run();
+        } else {
+            System.out.println("Back button clicked, but no action defined.");
+        }
+    }
 
     private String escapeCsv(String value) {
-        // ... (Implementation remains the same) ...
-        if (value == null) return "";
+        if (value == null)
+            return "";
         String escaped = value.replace("\"", "\"\"");
         if (escaped.contains(",") || escaped.contains("\"") || escaped.contains("\n") || escaped.contains("\r")) {
             return "\"" + escaped + "\"";
@@ -278,24 +448,18 @@ public class ResultsViewController implements Initializable {
     }
 
     private String formatCsvDouble(double value) {
-        // ... (Implementation remains the same) ...
         return Double.isNaN(value) ? "" : String.format(Locale.US, "%.4f", value);
     }
 
     private Stage getStage() {
-        // ... (Implementation remains the same) ...
         return (Stage) resultsTable.getScene().getWindow();
     }
 
     private void showAlert(Alert.AlertType type, String title, String content) {
-        // ... (Implementation remains the same) ...
         Alert alert = new Alert(type);
         alert.setTitle(title);
         alert.setHeaderText(null);
         alert.setContentText(content);
         alert.showAndWait();
     }
-
-    // Removed SimpleResultDTO as not needed for direct serialization attempt
-
-} // End of ResultsViewController class
+}

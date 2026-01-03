@@ -27,11 +27,11 @@ android {
         }
     }
     compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_1_8
-        targetCompatibility = JavaVersion.VERSION_1_8
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
     }
     kotlinOptions {
-        jvmTarget = "1.8"
+        jvmTarget = "17"
     }
     buildFeatures {
         compose = true
@@ -72,4 +72,7 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-viewmodel-ktx:2.7.0")
     // Core module dependency (should already be there from previous steps)
     implementation("com.shadowtengu:automl_core:1.0-SNAPSHOT")
+    
+    // MPAndroidChart for fitness history visualization
+    implementation("com.github.PhilJay:MPAndroidChart:v3.1.0")
 }

@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<?import javafx.geometry.Insets?>
+<?import javafx.scene.control.*?>
+<?import javafx.scene.layout.*?>
+
+<VBox xmlns:fx="http://javafx.com/fxml/1" fx:controller="com.example.automl_prototype_1.controller.ProgressViewController"
+      spacing="20" alignment="CENTER" style="-fx-padding: 20;">
+
+    <Label fx:id="mainStatusLabel" styleClass="header-label" text="Starting Experiment..."/>
+    <ProgressIndicator fx:id="mainProgressIndicator" progress="-1.0"/>
+
+    <GridPane hgap="10" vgap="15" styleClass="card" maxWidth="600">
+        <padding><Insets top="20" right="30" bottom="20" left="30"/></padding>
+        <columnConstraints>
+            <ColumnConstraints hgrow="NEVER" prefWidth="180"/>
+            <ColumnConstraints hgrow="ALWAYS"/>
+        </columnConstraints>
+
+        <Label text="Global Best Accuracy:" styleClass="sub-header-label" GridPane.rowIndex="0" GridPane.columnIndex="0"/>
+        <Label fx:id="globalBestAccuracyLabel" styleClass="stat-value-label" text="N/A" GridPane.rowIndex="0" GridPane.columnIndex="1"/>
+
+        <Label text="Achieved By:" GridPane.rowIndex="1" GridPane.columnIndex="0"/>
+        <Label fx:id="globalBestAlgoLabel" text="N/A" GridPane.rowIndex="1" GridPane.columnIndex="1"/>
+
+        <Separator GridPane.rowIndex="2" GridPane.columnSpan="2"/>
+
+        <Label text="Current Algorithm:" styleClass="sub-header-label" GridPane.rowIndex="3" GridPane.columnIndex="0"/>
+        <Label fx:id="currentAlgoLabel" text="-" GridPane.rowIndex="3" GridPane.columnIndex="1"/>
+
+        <Label text="Trial Progress:" GridPane.rowIndex="4" GridPane.columnIndex="0"/>
+        <ProgressBar fx:id="trialProgressBar" progress="0.0" prefWidth="300" GridPane.rowIndex="4" GridPane.columnIndex="1"/>
+
+        <Label text="Iteration Progress:" GridPane.rowIndex="5" GridPane.columnIndex="0"/>
+        <ProgressBar fx:id="iterationProgressBar" progress="0.0" prefWidth="300" GridPane.rowIndex="5" GridPane.columnIndex="1"/>
+
+        <Label text="Est. Time Remaining:" styleClass="sub-header-label" GridPane.rowIndex="6" GridPane.columnIndex="0"/>
+        <Label fx:id="etaLabel" styleClass="stat-subtitle-label" text="Calculating..." GridPane.rowIndex="6" GridPane.columnIndex="1"/>
+    </GridPane>
+    <VBox spacing="10" alignment="CENTER_LEFT" VBox.vgrow="ALWAYS">
+        <Label styleClass="sub-header-label" text="Live Execution Logs (Hacker Mode)"/>
+        <TextArea fx:id="logConsole" editable="false" wrapText="true" 
+                  style="-fx-font-family: 'Consolas', 'Monospace'; -fx-control-inner-background: #1a1a1a; -fx-text-fill: #00ff00;" 
+                  VBox.vgrow="ALWAYS"/>
+    </VBox>
+</VBox>

@@ -13,10 +13,16 @@
 
     <modules>
         <module>automl_core</module>        <!-- **** ADDED Module **** -->
-        <module>desktop-app</module>        <!-- **** ADDED Module (assuming you rename original dir) **** -->
+        <module>desktop-app</module><!-- **** ADDED Module (assuming you rename original dir) **** -->
         <!-- Android module is NOT listed here - it uses Gradle -->
     </modules>
-
+    <repositories>
+        <repository>
+            <id>google-maven-central</id>
+            <name>Google Maven Central</name>
+            <url>https://maven-central.storage-download.googleapis.com/maven2/</url>
+        </repository>
+    </repositories>
     <properties>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <maven.compiler.release>17</maven.compiler.release> <!-- Base Java level, modules can override -->

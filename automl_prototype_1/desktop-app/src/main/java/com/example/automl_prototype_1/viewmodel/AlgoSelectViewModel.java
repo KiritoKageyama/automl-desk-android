@@ -1,0 +1,298 @@
+package com.example.automl_prototype_1.viewmodel;
+
+import com.example.automl_prototype_1.model.Dataset;
+
+import com.example.automl_prototype_1.service.AppStateService;
+import com.example.automl_prototype_1.service.IClassifier;
+
+import com.example.automl_prototype_1.dataprovider.CsvDataProvider;
+import javafx.beans.property.*;
+import javafx.beans.value.ChangeListener;
+
+import java.io.File;
+import java.io.FileReader;
+import java.util.ArrayList;
+import java.util.List;
+
+public class AlgoSelectViewModel {
+
+    private final AppStateService appStateService = AppStateService.getInstance();
+    private final com.example.automl_prototype_1.service.agentic.AgenticAdvisor agenticAdvisor;
+
+    // Properties for UI Binding
+    private final StringProperty adviceText = new SimpleStringProperty("");
+    private final BooleanProperty tuningEnabled = new SimpleBooleanProperty();
+    private final StringProperty kFolds = new SimpleStringProperty();
+    private final StringProperty scalingStrategy = new SimpleStringProperty();
+    private final ObjectProperty<String> selectedBaseModel = new SimpleObjectProperty<>();
+
+    // Checkbox properties
+    private final BooleanProperty gaSelected = new SimpleBooleanProperty();
+    private final BooleanProperty igpsoSelected = new SimpleBooleanProperty();
+    private final BooleanProperty wwoSelected = new SimpleBooleanProperty();
+    private final BooleanProperty bpsoSelected = new SimpleBooleanProperty();
+    private final BooleanProperty asoSelected = new SimpleBooleanProperty();
+
+    private final BooleanProperty plsSelected = new SimpleBooleanProperty();
+    private final BooleanProperty saSelected = new SimpleBooleanProperty();
+    private final BooleanProperty gwoSelected = new SimpleBooleanProperty();
+    private final BooleanProperty deSelected = new SimpleBooleanProperty();
+
+    public AlgoSelectViewModel() {
+        this.agenticAdvisor = new com.example.automl_prototype_1.service.agentic.AgenticAdvisor();
+        initializeProperties();
+    }
+
+    private void initializeProperties() {
+        // Initialize from AppStateService
+        tuningEnabled.set(appStateService.isTuningEnabled());
+        kFolds.set(String.valueOf(appStateService.getKFolds()));
+        scalingStrategy.set(appStateService.getScalingStrategy());
+        selectedBaseModel.set(appStateService.getSelectedBaseModelName());
+
+        List<String> selectedAlgos = appStateService.getSelectedAlgorithmNames();
+        if (selectedAlgos != null) {
+            gaSelected.set(selectedAlgos.contains("GA"));
+            igpsoSelected.set(selectedAlgos.contains("IGPSO"));
+            wwoSelected.set(selectedAlgos.contains("WWO"));
+            bpsoSelected.set(selectedAlgos.contains("BPSO"));
+            asoSelected.set(selectedAlgos.contains("ASO"));
+            asoSelected.set(selectedAlgos.contains("ASO"));
+            plsSelected.set(selectedAlgos.contains("PLS"));
+            saSelected.set(selectedAlgos.contains("SA"));
+            gwoSelected.set(selectedAlgos.contains("GWO"));
+            deSelected.set(selectedAlgos.contains("DE"));
+        }
+
+        // Add listeners to update AppStateService when properties change
+        tuningEnabled.addListener((obs, old, val) -> appStateService.setTuningEnabled(val));
+
+        kFolds.addListener((obs, old, val) -> {
+            try {
+                int k = Integer.parseInt(val);
+                if (k > 1 && k <= 100)
+                    appStateService.setKFolds(k);
+            } catch (NumberFormatException e) {
+                /* Ignore */ }
+        });
+
+        scalingStrategy.addListener((obs, old, val) -> {
+            if (val != null)
+                appStateService.setScalingStrategy(val);
+        });
+
+        selectedBaseModel.addListener((obs, old, val) -> {
+            if (val != null) {
+                appStateService.setSelectedBaseModelName(val);
+                appStateService.setSelectedClassifier(createClassifierFromString(val));
+            }
+        });
+
+        // Listeners for checkboxes
+        ChangeListener<Boolean> algoListener = (obs, old, val) -> updateSelectedAlgorithms();
+        gaSelected.addListener(algoListener);
+        igpsoSelected.addListener(algoListener);
+        wwoSelected.addListener(algoListener);
+        bpsoSelected.addListener(algoListener);
+        asoSelected.addListener(algoListener);
+        asoSelected.addListener(algoListener);
+        plsSelected.addListener(algoListener);
+        saSelected.addListener(algoListener);
+        gwoSelected.addListener(algoListener);
+        deSelected.addListener(algoListener);
+    }
+
+    private void updateSelectedAlgorithms() {
+        List<String> selected = new ArrayList<>();
+        if (gaSelected.get())
+            selected.add("GA");
+        if (igpsoSelected.get())
+            selected.add("IGPSO");
+        if (wwoSelected.get())
+            selected.add("WWO");
+        if (bpsoSelected.get())
+            selected.add("BPSO");
+        if (asoSelected.get())
+            selected.add("ASO");
+        if (plsSelected.get())
+            selected.add("PLS");
+        if (saSelected.get())
+            selected.add("SA");
+        if (gwoSelected.get())
+            selected.add("GWO");
+        if (deSelected.get())
+            selected.add("DE");
+        appStateService.setSelectedAlgorithmNames(selected);
+    }
+
+    public void generateAdvice() {
+        File datasetFile = appStateService.getSelectedDatasetFile();
+        if (datasetFile == null) {
+            adviceText.set("Warning: Please select a dataset first on the Upload tab.");
+            return;
+        }
+
+        // Run in background thread to avoid freezing UI during empirical benchmark
+        adviceText.set(
+                "Agentic AI is thinking...\n\n1. Analyzing dataset meta-features...\n2. Running internal empirical benchmarks (Quick Scan)...\n3. Searching external knowledge base for SOTA results...");
+
+        new Thread(() -> {
+            try (FileReader reader = new FileReader(datasetFile)) {
+                Dataset tempDataset = new CsvDataProvider().loadDataset(reader);
+                String datasetName = datasetFile.getName();
+
+                // Use AgenticAdvisor to get suggestions (now includes empirical + SOTA)
+                List<com.example.automl_prototype_1.service.agentic.PipelineSuggestion> suggestions = agenticAdvisor
+                        .suggestPipelines(tempDataset, datasetName);
+
+                javafx.application.Platform.runLater(() -> {
+                    StringBuilder sb = new StringBuilder();
+                    sb.append("--- Agentic AI Report ---\n");
+                    sb.append("Analyzed Dataset: ").append(datasetName).append("\n\n");
+
+                    if (suggestions.isEmpty()) {
+                        sb.append("No specific recommendations found. Try standard algorithms like Random Forest.");
+                    } else {
+                        // Display SOTA from the first suggestion (they all share the same lookup)
+                        String sota = suggestions.get(0).getSotaComparison();
+                        sb.append(">> External Knowledge (SOTA): ").append(sota).append("\n\n");
+                        sb.append(">> Internal Benchmark & Recommendations:\n");
+
+                        for (int i = 0; i < suggestions.size(); i++) {
+                            com.example.automl_prototype_1.service.agentic.PipelineSuggestion s = suggestions.get(i);
+                            sb.append(
+                                    String.format("%d. %s + %s\n", i + 1, s.getAlgorithmName(), s.getClassifierName()));
+                            sb.append(String.format("   Confidence: %.0f%% | Empirical Score: %.2f\n",
+                                    s.getConfidence() * 100, s.getEmpiricalScore()));
+                            sb.append("   Reason: ").append(s.getReasoning()).append("\n\n");
+                        }
+                    }
+                    adviceText.set(sb.toString());
+                });
+
+            } catch (Exception e) {
+                javafx.application.Platform.runLater(() -> {
+                    adviceText.set("Error: Could not load dataset for analysis.\n\n" + e.getMessage());
+                });
+                e.printStackTrace();
+            }
+        }).start();
+    }
+
+    public IClassifier createClassifierFromString(String name) {
+        return switch (name) {
+            case "Random Forest" -> new com.example.automl_prototype_1.classifier.RandomForestClassifier();
+            case "Logistic Regression" -> new com.example.automl_prototype_1.classifier.LogisticRegression();
+            case "KNN" -> new com.example.automl_prototype_1.classifier.KnnClassifier();
+            case "XGBoost" -> new com.example.automl_prototype_1.classifier.XGBoostClassifier();
+            case "SVM" -> new com.example.automl_prototype_1.classifier.SvmClassifier();
+
+            // GPU Variants
+            case "GPU-KNN" -> new com.example.automl_prototype_1.classifier.GpuKnnClassifier();
+            case "GPU-Logistic Regression" -> new com.example.automl_prototype_1.classifier.GpuLogisticRegression();
+            case "Random Forest (GPU Accelerated)" ->
+                new com.example.automl_prototype_1.classifier.GpuRandomForestClassifier(); // Auto-bridges
+            case "SVM (Linear GPU)" -> new com.example.automl_prototype_1.classifier.GpuSvmClassifier();
+            case "XGBoost (GPU Accelerated)" -> new com.example.automl_prototype_1.classifier.GpuXGBoostClassifier(); // Old
+                                                                                                                      // wrapper
+
+            // New Python Bridge Variants
+            case "XGBoost (Python/GPU Bridge)" ->
+                new com.example.automl_prototype_1.classifier.GpuPythonXGBoostClassifier();
+            case "SVM (Python/GPU/RBF Bridge)" ->
+                new com.example.automl_prototype_1.classifier.GpuPythonSvmClassifier();
+            case "AdaBoost (Python)" -> new com.example.automl_prototype_1.classifier.PythonAdaBoostClassifier();
+            case "Gradient Boosting (Python)" ->
+                new com.example.automl_prototype_1.classifier.PythonGradientBoostingClassifier();
+            case "Decision Tree (Python)" ->
+                new com.example.automl_prototype_1.classifier.PythonDecisionTreeClassifier();
+
+            default ->
+                // Fallback
+                new com.example.automl_prototype_1.classifier.RandomForestClassifier();
+        };
+    }
+
+    public List<String> getAvailableClassifiers() {
+        List<String> classifiers = new ArrayList<>();
+        classifiers.add("KNN");
+        classifiers.add("Random Forest");
+        classifiers.add("SVM");
+        classifiers.add("XGBoost");
+
+        if (com.example.automl_prototype_1.service.HardwareAcceleratorService.isGpuAvailable()) {
+            classifiers.add("GPU-KNN");
+            classifiers.add("GPU-Logistic Regression");
+            classifiers.add("Random Forest (GPU Accelerated)");
+            classifiers.add("XGBoost (GPU Accelerated)"); // Old wrapper
+            classifiers.add("SVM (Linear GPU)"); // Existing Aparapi
+
+            // --- New Python Bridge Options ---
+            if (com.example.automl_prototype_1.service.PythonExecutionService.getInstance().isAvailable()) {
+                classifiers.add("XGBoost (Python/GPU Bridge)");
+                classifiers.add("SVM (Python/GPU/RBF Bridge)");
+                classifiers.add("AdaBoost (Python)");
+                classifiers.add("Gradient Boosting (Python)");
+                classifiers.add("Decision Tree (Python)");
+            }
+        }
+        return classifiers;
+    }
+
+    // Getters for properties
+    public StringProperty adviceTextProperty() {
+        return adviceText;
+    }
+
+    public BooleanProperty tuningEnabledProperty() {
+        return tuningEnabled;
+    }
+
+    public StringProperty kFoldsProperty() {
+        return kFolds;
+    }
+
+    public StringProperty scalingStrategyProperty() {
+        return scalingStrategy;
+    }
+
+    public ObjectProperty<String> selectedBaseModelProperty() {
+        return selectedBaseModel;
+    }
+
+    public BooleanProperty gaSelectedProperty() {
+        return gaSelected;
+    }
+
+    public BooleanProperty igpsoSelectedProperty() {
+        return igpsoSelected;
+    }
+
+    public BooleanProperty wwoSelectedProperty() {
+        return wwoSelected;
+    }
+
+    public BooleanProperty bpsoSelectedProperty() {
+        return bpsoSelected;
+    }
+
+    public BooleanProperty asoSelectedProperty() {
+        return asoSelected;
+    }
+
+    public BooleanProperty plsSelectedProperty() {
+        return plsSelected;
+    }
+
+    public BooleanProperty saSelectedProperty() {
+        return saSelected;
+    }
+
+    public BooleanProperty gwoSelectedProperty() {
+        return gwoSelected;
+    }
+
+    public BooleanProperty deSelectedProperty() {
+        return deSelected;
+    }
+}

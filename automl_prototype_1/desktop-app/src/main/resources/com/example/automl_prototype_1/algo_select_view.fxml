@@ -1,35 +1,57 @@
 <?xml version="1.0" encoding="UTF-8"?>
 
 <?import javafx.geometry.Insets?>
-<?import javafx.scene.control.CheckBox?>
-<?import javafx.scene.control.Label?>
-<?import javafx.scene.control.ChoiceBox?>
-<?import javafx.scene.layout.GridPane?>
-<?import javafx.scene.layout.VBox?>
-<?import javafx.scene.layout.ColumnConstraints?>
+<?import javafx.scene.control.*?>
+<?import javafx.scene.layout.*?>
 
-<VBox xmlns:fx="http://javafx.com/fxml/1" alignment="TOP_CENTER" spacing="20"
-      fx:controller="com.example.automl_prototype_1.controller.AlgoSelectViewController">
-    <padding>
-        <Insets bottom="20.0" left="20.0" right="20.0" top="20.0" />
-    </padding>
-    <Label style="-fx-font-size: 18px;" text="2. Select Algorithms" />
-    <Label style="-fx-font-size: 18px; -fx-padding: 20 0 0 0;" text="3. Select Base ML Model" />
-    <!-- Ensure this fx:id matches the @FXML field in the controller -->
-    <ChoiceBox fx:id="baseModelChoiceBox" prefWidth="250"/>
-    <GridPane hgap="10" vgap="10">
-        <columnConstraints>
-            <ColumnConstraints hgrow="SOMETIMES" minWidth="10.0" prefWidth="150.0" />
-            <ColumnConstraints hgrow="SOMETIMES" minWidth="10.0" prefWidth="150.0" />
-        </columnConstraints>
-        <children>
-            <CheckBox fx:id="checkIGPSO" text="IGPSO" GridPane.rowIndex="0" GridPane.columnIndex="0"/>
-            <CheckBox fx:id="checkWWO" text="WWO" GridPane.rowIndex="1" GridPane.columnIndex="0"/>
-            <CheckBox fx:id="checkBPSO" text="BPSO" GridPane.rowIndex="2" GridPane.columnIndex="0"/>
-            <CheckBox fx:id="checkGA" text="Genetic Algorithm" GridPane.rowIndex="0" GridPane.columnIndex="1"/>
-            <CheckBox fx:id="checkASO" text="ASO" GridPane.rowIndex="1" GridPane.columnIndex="1"/>
-            <CheckBox fx:id="checkNNP" text="NNP" GridPane.rowIndex="2" GridPane.columnIndex="1"/>
-        </children>
-    </GridPane>
-    <!-- Add config options later -->
-</VBox>
+<GridPane xmlns:fx="http://javafx.com/fxml/1"
+          fx:controller="com.example.automl_prototype_1.controller.AlgoSelectViewController"
+          hgap="20" vgap="20" style="-fx-padding: 10;">
+
+    <columnConstraints>
+        <ColumnConstraints hgrow="SOMETIMES" minWidth="10.0" prefWidth="400.0"/>
+        <ColumnConstraints hgrow="ALWAYS"/>
+    </columnConstraints>
+
+    <!-- Left Card: Primary Selections -->
+    <VBox spacing="15" styleClass="card" GridPane.columnIndex="0">
+        <padding><Insets top="20" right="30" bottom="20" left="30"/></padding>
+        <Label styleClass="header-label" text="2. Select Algorithms"/>
+        <GridPane hgap="20" vgap="10">
+            <columnConstraints>
+                <ColumnConstraints hgrow="SOMETIMES" minWidth="10.0"/>
+                <ColumnConstraints hgrow="SOMETIMES" minWidth="10.0"/>
+            </columnConstraints>
+            <children>
+                <CheckBox fx:id="checkBPSO" text="BPSO" GridPane.rowIndex="0" GridPane.columnIndex="0"/>
+                <CheckBox fx:id="checkWWO" text="WWO" GridPane.rowIndex="1" GridPane.columnIndex="0"/>
+                <CheckBox fx:id="checkASO" text="ASO" GridPane.rowIndex="2" GridPane.columnIndex="0"/>
+                <CheckBox fx:id="checkGA" text="Genetic Algorithm" GridPane.rowIndex="0" GridPane.columnIndex="1"/>
+                <CheckBox fx:id="checkIGPSO" text="IGPSO" GridPane.rowIndex="1" GridPane.columnIndex="1"/>
+                <CheckBox fx:id="checkPLS" text="Parallel Local Search" GridPane.rowIndex="2" GridPane.columnIndex="1"/>
+                <CheckBox fx:id="checkSA" text="Simulated Annealing" GridPane.rowIndex="3" GridPane.columnIndex="0"/>
+                <CheckBox fx:id="checkGWO" text="Grey Wolf Optimizer" GridPane.rowIndex="3" GridPane.columnIndex="1"/>
+                <CheckBox fx:id="checkDE" text="Differential Evolution" GridPane.rowIndex="4" GridPane.columnIndex="0"/>
+            </children>
+        </GridPane>
+        <Separator prefHeight="20.0"/>
+        <Label styleClass="header-label" text="3. Select Base ML Model"/>
+        <ChoiceBox fx:id="baseModelChoiceBox" maxWidth="Infinity"/>
+    </VBox>
+
+    <!-- Right Card: Advanced Options & Advice -->
+    <VBox spacing="15" styleClass="card" GridPane.columnIndex="1" GridPane.vgrow="ALWAYS">
+        <padding><Insets top="20" right="30" bottom="20" left="30"/></padding>
+        <Label styleClass="header-label" text="Advanced Options"/>
+        <Label styleClass="sub-header-label" text="Feature Scaling Method:"/>
+        <ChoiceBox fx:id="scalingStrategyChoiceBox" maxWidth="Infinity"/>
+        <Label styleClass="sub-header-label" text="Number of Folds for Cross-Validation:"/>
+        <TextField fx:id="kFoldsTextField" promptText="e.g., 5 or 10"/>
+        <CheckBox fx:id="enableTuningCheckBox" text="Enable Hyperparameter Tuning (Slower)"/>
+        <Separator prefHeight="20.0"/>
+        <Label styleClass="header-label" text="Recommendation"/>
+        <Button fx:id="recommendButton" text="Get Advice for my Dataset" maxWidth="Infinity" styleClass="button-accent"/>
+        <TextArea fx:id="adviceTextArea" editable="false" wrapText="true" VBox.vgrow="ALWAYS"
+                  promptText="Click 'Get Advice' to see recommendations based on your dataset's characteristics."/>
+    </VBox>
+</GridPane>

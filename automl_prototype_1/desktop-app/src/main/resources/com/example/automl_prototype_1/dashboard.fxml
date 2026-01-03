@@ -1,41 +1,71 @@
 <?xml version="1.0" encoding="UTF-8"?>
 
-<?import javafx.scene.control.*?>
-<?import javafx.scene.layout.*?>
 <?import javafx.geometry.Insets?>
+<?import javafx.scene.control.Button?>
+<?import javafx.scene.control.Label?>
+<?import javafx.scene.layout.BorderPane?>
+<?import javafx.scene.layout.HBox?>
+<?import javafx.scene.layout.Region?>
+<?import javafx.scene.layout.StackPane?>
+<?import javafx.scene.layout.VBox?>
+<?import javafx.scene.text.Font?>
 
 <BorderPane fx:controller="com.example.automl_prototype_1.controller.DashboardController"
-            xmlns:fx="http://javafx.com/fxml"
-            stylesheets="/com/example/automl_prototype_1/css/dashboard.css"
-            prefWidth="900" prefHeight="600">
+            xmlns:fx="http://javafx.com/fxml/1" prefWidth="1280" prefHeight="850"
+            styleClass="root">
 
-    <!-- Sidebar -->
+    <!-- LEFT: Modern Sidebar Navigation -->
     <left>
-        <!-- NEW -->
-        <VBox spacing="15" style="-fx-background-color: #2C3E50;" prefWidth="200">
-            <padding>
-                <Insets top="20" right="20" bottom="20" left="20"/>
-            </padding>
-            <Label text="AutoML" style="-fx-text-fill: white; -fx-font-size: 24px;" />
+        <VBox spacing="10" prefWidth="260" styleClass="left-sidebar">
+            <padding><Insets top="30" right="20" bottom="30" left="20"/></padding>
+            
+            <!-- Logo / Brand Area -->
+            <HBox alignment="CENTER_LEFT" spacing="10">
+                <padding><Insets bottom="40"/></padding>
+                <Label text="AutoML" styleClass="sidebar-title"/>
+            </HBox>
 
-            <Button text="Upload Dataset" fx:id="uploadBtn" styleClass="nav-button"/>
-            <Button text="Select Algorithm" fx:id="algoBtn" styleClass="nav-button"/>
-            <Button text="Run Model" fx:id="runBtn" styleClass="nav-button"/>
-            <Button text="View Results" fx:id="resultsBtn" styleClass="nav-button"/>
-            <Button text="Settings" fx:id="settingsBtn" styleClass="nav-button"/>
+            <!-- Navigation Items -->
+            <Label text="MAIN MENU" styleClass="sub-header-label" style="-fx-font-size: 12px; -fx-text-fill: -color-text-secondary; -fx-padding: 0 0 10 10;"/>
+            
+            <Button fx:id="uploadBtn" text="Upload Dataset" styleClass="nav-button" maxWidth="Infinity"/>
+            <Button fx:id="algoBtn" text="Select Algorithm" styleClass="nav-button" maxWidth="Infinity"/>
+            <Button fx:id="settingsBtn" text="Settings" styleClass="nav-button" maxWidth="Infinity"/>
+            <Button fx:id="simulatorBtn" text="Pipeline Simulator" styleClass="nav-button" maxWidth="Infinity"/>
 
-            <Region VBox.vgrow="ALWAYS" />
-            <Button text="Exit" onAction="#onExitClicked" styleClass="nav-button" fx:id="exitBtn"/>
+            <Region prefHeight="30"/>
+
+            <Label text="ACTIONS" styleClass="sub-header-label" style="-fx-font-size: 12px; -fx-text-fill: -color-text-secondary; -fx-padding: 0 0 10 10;"/>
+            <Button fx:id="runBtn" text="Run Experiment" styleClass="nav-button, button-accent" maxWidth="Infinity"/>
+            <Button fx:id="resultsBtn" text="View Results" styleClass="nav-button" maxWidth="Infinity"/>
+            
+            <Region VBox.vgrow="ALWAYS"/>
+            
+            <!-- Bottom Actions -->
+            <Button fx:id="exitBtn" text="Log Out" styleClass="nav-button" maxWidth="Infinity"/>
         </VBox>
     </left>
 
-    <!-- Main Content Area -->
+    <!-- CENTER: Main Content Area with Header -->
     <center>
-        <StackPane fx:id="mainContent" style="-fx-background-color: #ECF0F1;">
-            <padding>
-                <Insets top="20" right="20" bottom="20" left="20"/>
-            </padding>
-            <Label text="Welcome to AutoML Dashboard" style="-fx-font-size: 18px;" />
-        </StackPane>
+        <VBox spacing="0" styleClass="content-area">
+            <!-- Header Bar -->
+            <HBox alignment="CENTER_LEFT" spacing="20" style="-fx-padding: 20 30 10 30;">
+                <VBox>
+                    <Label text="Dashboard" styleClass="header-label"/>
+                    <Label text="Welcome back, User" styleClass="sub-header-label" style="-fx-font-weight: normal;"/>
+                    <Label fx:id="datasetLabel" text="No dataset selected" styleClass="sub-header-label" style="-fx-font-size: 12px; -fx-opacity: 0.8;"/>
+                </VBox>
+                <Region HBox.hgrow="ALWAYS"/>
+                <!-- Placeholder for User Profile or Theme Toggle -->
+                <Button text="Help" styleClass="button"/>
+            </HBox>
+
+            <!-- Dynamic Content -->
+            <StackPane fx:id="mainContent" VBox.vgrow="ALWAYS">
+                <padding><Insets top="20" right="30" bottom="30" left="30"/></padding>
+            </StackPane>
+        </VBox>
     </center>
+
 </BorderPane>
