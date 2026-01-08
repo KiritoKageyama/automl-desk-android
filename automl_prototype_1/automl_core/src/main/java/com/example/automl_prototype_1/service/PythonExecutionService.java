@@ -69,13 +69,39 @@ public class PythonExecutionService {
         if (!isAvailable())
             return false;
 
+        boolean useWsl = AppStateService.getInstance().isUseWsl();
         List<String> command = new ArrayList<>();
-        command.add(pythonCommand);
-        command.add(scriptPath.getAbsolutePath());
+
+        if (useWsl) {
+            // Dynamic Wrapper Generation to avoid "Script not found" and CRLF issues
+            try {
+                File wrapperFile = createWslWrapperScript();
+                // Explicitly use bash to execute the shell script
+                command.add("wsl");
+                if (AppStateService.getInstance().getWslDistributionName() != null) {
+                    command.add("-d");
+                    command.add(AppStateService.getInstance().getWslDistributionName());
+                }
+                command.add("bash");
+                command.add(convertToWslPath(wrapperFile.getAbsolutePath()));
+            } catch (IOException e) {
+                LogService.error("PythonBridge", "Failed to create temp wrapper script: " + e.getMessage());
+                return false;
+            }
+        } else {
+            command.add(pythonCommand);
+        }
+
+        // Handle Paths
+        String scriptP = useWsl ? convertToWslPath(scriptPath.getAbsolutePath()) : scriptPath.getAbsolutePath();
+        String dataP = useWsl ? convertToWslPath(trainDataPath.getAbsolutePath()) : trainDataPath.getAbsolutePath();
+        String outP = useWsl ? convertToWslPath(modelOutputPath.getAbsolutePath()) : modelOutputPath.getAbsolutePath();
+
+        command.add(scriptP);
         command.add("--data");
-        command.add(trainDataPath.getAbsolutePath());
+        command.add(dataP);
         command.add("--output");
-        command.add(modelOutputPath.getAbsolutePath());
+        command.add(outP);
         if (args != null) {
             command.addAll(Arrays.asList(args));
         }
@@ -96,30 +122,60 @@ public class PythonExecutionService {
         if (!isAvailable())
             return false;
 
+        boolean useWsl = AppStateService.getInstance().isUseWsl();
         List<String> command = new ArrayList<>();
-        command.add(pythonCommand);
-        command.add(scriptPath.getAbsolutePath());
+
+        if (useWsl) {
+            // Dynamic Wrapper Generation to avoid "Script not found" and CRLF issues
+            try {
+                File wrapperFile = createWslWrapperScript();
+                // Explicitly use bash to execute the shell script
+                command.add("wsl");
+                if (AppStateService.getInstance().getWslDistributionName() != null) {
+                    command.add("-d");
+                    command.add(AppStateService.getInstance().getWslDistributionName());
+                }
+                command.add("bash");
+                command.add(convertToWslPath(wrapperFile.getAbsolutePath()));
+            } catch (IOException e) {
+                LogService.error("PythonBridge", "Failed to create temp wrapper script: " + e.getMessage());
+                return false;
+            }
+        } else {
+            command.add(pythonCommand);
+        }
+
+        String scriptP = useWsl ? convertToWslPath(scriptPath.getAbsolutePath()) : scriptPath.getAbsolutePath();
+        String modelP = useWsl ? convertToWslPath(modelPath.getAbsolutePath()) : modelPath.getAbsolutePath();
+        String inputP = useWsl ? convertToWslPath(inputDataPath.getAbsolutePath()) : inputDataPath.getAbsolutePath();
+        String outP = useWsl ? convertToWslPath(outputWithPredPath.getAbsolutePath())
+                : outputWithPredPath.getAbsolutePath();
+
+        command.add(scriptP);
         command.add("--model");
-        command.add(modelPath.getAbsolutePath());
+        command.add(modelP);
         command.add("--input");
-        command.add(inputDataPath.getAbsolutePath());
+        command.add(inputP);
         command.add("--output");
-        command.add(outputWithPredPath.getAbsolutePath());
+        command.add(outP);
 
         return executeProcess(command, "Prediction");
     }
 
     private boolean executeProcess(List<String> command, String operation) {
         try {
+            LogService.info("PythonBridge", "Exec: " + String.join(" ", command));
             ProcessBuilder pb = new ProcessBuilder(command);
             pb.redirectErrorStream(true); // Merge stderr into stdout
             Process process = pb.start();
 
             // Read output
             try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
-                while (reader.readLine() != null) {
-                    // Filter verbose python logs if needed, or just debug log
-                    // LogService.debug("PythonBridge", line);
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    if (AppStateService.getInstance().isLoggingEnabled()) {
+                        LogService.info("PythonBridge", "[DEBUG] " + line);
+                    }
                 }
             }
 
@@ -137,10 +193,77 @@ public class PythonExecutionService {
         }
     }
 
+    /**
+     * Converts a Windows path (C:\Foo\Bar) to a WSL path (/mnt/c/Foo/Bar).
+     */
+    private String convertToWslPath(String windowsPath) {
+        String drive = windowsPath.substring(0, 1).toLowerCase();
+        // Remove drive letter and colon (e.g. "C:")
+        String path = windowsPath.substring(3).replace("\\", "/");
+        // User's Ubuntu WSL mounts C: at /mnt/c
+        return "/mnt/" + drive + "/" + path;
+    }
+
+    private File getProjectTempDir() {
+        File projectRoot = new File(System.getProperty("user.dir"));
+        File tempDir = new File(projectRoot, "wsl_temp");
+        if (!tempDir.exists()) {
+            tempDir.mkdirs();
+        }
+        return tempDir;
+    }
+
     // Helper to extract resource script to temp file
     public File extractScriptToTemp(String resourceName) throws IOException {
-        // Implementation later if scripts are embedded in JAR
-        // For development, we assume running from IDE or resources are accessible
-        return null; // Placeholder
+        String resourcePath = "/python/" + resourceName;
+        java.io.InputStream in = getClass().getResourceAsStream(resourcePath);
+        if (in == null) {
+            // Try without /python prefix just in case
+            resourcePath = "/" + resourceName;
+            in = getClass().getResourceAsStream(resourcePath);
+            if (in == null) {
+                throw new java.io.FileNotFoundException("Resource not found: " + resourceName);
+            }
+        }
+
+        // Create temp file in project-local temp dir
+        File tempFile = File.createTempFile("automl_script_" + resourceName, ".py", getProjectTempDir());
+        tempFile.deleteOnExit();
+
+        try (java.io.FileOutputStream out = new java.io.FileOutputStream(tempFile)) {
+            byte[] buffer = new byte[1024];
+            int bytesRead;
+            while ((bytesRead = in.read(buffer)) != -1) {
+                out.write(buffer, 0, bytesRead);
+            }
+        } finally {
+            in.close();
+        }
+        return tempFile;
+    }
+
+    private File createWslWrapperScript() throws IOException {
+        // Create temp file in project-local temp dir
+        File tempFile = File.createTempFile("run_wsl_gpu", ".sh", getProjectTempDir());
+        tempFile.deleteOnExit();
+
+        // Write content with explicit \n line endings (LF) for Linux compatibility
+        try (java.io.BufferedWriter out = new java.io.BufferedWriter(new java.io.FileWriter(tempFile))) {
+            out.write("#!/bin/bash\n");
+            out.write("PYTHON_EXEC=\"$HOME/miniconda/envs/automl_gpu_env/bin/python\"\n");
+            out.write("if [ ! -f \"$PYTHON_EXEC\" ]; then\n");
+            out.write("    PYTHON_EXEC=\"$HOME/miniconda3/envs/automl_gpu_env/bin/python\"\n");
+            out.write("fi\n");
+            out.write("\n");
+            out.write("if [ -f \"$PYTHON_EXEC\" ]; then\n");
+            out.write("    \"$PYTHON_EXEC\" \"$@\"\n");
+            out.write("else\n");
+            out.write(
+                    "    source \"$HOME/miniconda/etc/profile.d/conda.sh\" 2>/dev/null || source \"$HOME/miniconda3/etc/profile.d/conda.sh\" 2>/dev/null\n");
+            out.write("    conda activate automl_gpu_env\n");
+            out.write("    python \"$@\"\n");
+            out.write("fi\n");
+        }
+        return tempFile;
     }
 }

@@ -40,7 +40,11 @@ public abstract class AbstractFeatureSelectionAlgorithm implements OptimizationA
         String algoName = getAlgorithmName();
         int maxIters = getMaxIterations();
 
-        final String TARGET_COLUMN = "Class";
+        String targetColumn = dataset.getTargetColumnName();
+        if (targetColumn == null || targetColumn.isEmpty()) {
+            targetColumn = "Class";
+        }
+        final String TARGET_COLUMN = targetColumn;
         double[][] allFeatures = dataset.getFeatureMatrix(TARGET_COLUMN);
         int[] allLabels = dataset.getLabelVector(TARGET_COLUMN);
 

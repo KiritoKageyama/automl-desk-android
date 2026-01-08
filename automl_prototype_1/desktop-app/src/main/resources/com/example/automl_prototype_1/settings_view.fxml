@@ -41,6 +41,7 @@
 
         <VBox spacing="10">
              <javafx.scene.control.CheckBox fx:id="chkUseGpu" text="Use GPU Acceleration (if available)"/>
+             <javafx.scene.control.CheckBox fx:id="chkUseWsl" text="Enable WSL 2 (Required for RAPIDS/cuML on Windows)"/>
              <javafx.scene.control.ComboBox fx:id="cmbGpuSelector" promptText="Select GPU Device" prefWidth="350.0"/>
              <javafx.scene.control.CheckBox fx:id="chkStandardization" text="Enable Data Standardization (Z-Score)"/>
              <javafx.scene.control.CheckBox fx:id="chkBalancedOpt" text="Optimize for Balanced Accuracy (for Imbalanced Data)"/>

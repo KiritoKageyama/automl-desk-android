@@ -53,12 +53,14 @@ public class HyperparameterTuningService {
             case "WWO" -> new WaterWaveOptimization(popSize, maxIter);
             case "ASO" -> new AtomSearchOptimization(popSize, maxIter);
             case "IGPSO" -> new IGPSO(popSize, maxIter);
-            case "PLS" -> new ParallelLocalSearchAlgorithm(maxIter);
             case "Simulated Annealing", "SA" -> {
                 double initialTemp = rand.nextDouble(0.8, 1.2);
                 double coolingRate = rand.nextDouble(0.99, 0.999);
                 yield new SimulatedAnnealing(maxIter * 5, initialTemp, coolingRate);
             }
+            case "GWO", "Grey Wolf Optimizer" -> new GreyWolfOptimizer(popSize, maxIter);
+            case "DE", "Differential Evolution" -> new DifferentialEvolution(popSize, maxIter);
+            case "PLS", "Parallel Local Search" -> new ParallelLocalSearchAlgorithm(maxIter);
             default -> null;
         };
     }

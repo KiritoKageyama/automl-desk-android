@@ -30,6 +30,11 @@ public class SimulatedAnnealing extends AbstractFeatureSelectionAlgorithm {
         this(30, 100.0, 0.995); // Adjusted to match existing constructor signature
     }
 
+    // Constructor for HyperparameterTuningService
+    public SimulatedAnnealing(int populationSize, int maxIterations) {
+        this(maxIterations, 100.0, 0.995); // Ignore populationSize, use default temp/cooling
+    }
+
     @Override
     public String getAlgorithmName() {
         return "Simulated Annealing (SA)";

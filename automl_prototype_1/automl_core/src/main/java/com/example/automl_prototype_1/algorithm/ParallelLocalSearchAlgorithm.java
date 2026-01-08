@@ -30,6 +30,11 @@ public class ParallelLocalSearchAlgorithm extends AbstractFeatureSelectionAlgori
         this(200);
     }
 
+    // Constructor for HyperparameterTuningService
+    public ParallelLocalSearchAlgorithm(int populationSize, int maxIterations) {
+        this(maxIterations); // Ignore populationSize
+    }
+
     @Override
     public String getAlgorithmName() {
         return "Parallel Local Search (PLS)";

@@ -10,12 +10,15 @@ public class Hyperparameter {
         INTEGER, DOUBLE, CATEGORICAL, BOOLEAN
     }
 
-    private final String name;
-    private final Type type;
-    private final Object defaultValue;
-    private final Object min; // For numeric
-    private final Object max; // For numeric
-    private final List<Object> options; // For categorical
+    private String name;
+    private Type type;
+    private Object defaultValue;
+    private Object min; // For numeric
+    private Object max; // For numeric
+    private List<Object> options; // For categorical
+
+    public Hyperparameter() {
+    }
 
     // Constructor for Numeric (Int/Double)
     public Hyperparameter(String name, Type type, Object defaultValue, Object min, Object max) {

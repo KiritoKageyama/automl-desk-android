@@ -57,8 +57,15 @@ public class GpuKnnClassifier implements IClassifier {
         Kernel kernel = new Kernel() {
             @Override
             public void run() {
-                int testIdx = getGlobalId(0);
-                int trainIdx = getGlobalId(1);
+                // 1D Linearization to avoid Local Size Exceeded errors on 2D ranges
+                int globalId = getGlobalId();
+                int testIdx = globalId / numTrain;
+                int trainIdx = globalId % numTrain;
+
+                // Bounds check (vital for 1D if padding occurs, though Aparapi usually handles
+                // precise ranges)
+                if (testIdx >= numTest || trainIdx >= numTrain)
+                    return;
 
                 // Calculate Euclidean distance between test[testIdx] and train[trainIdx]
                 float distSq = 0;
@@ -71,7 +78,7 @@ public class GpuKnnClassifier implements IClassifier {
                 }
 
                 // Store result
-                distances[testIdx * numTrain + trainIdx] = distSq; // We can use squared distance for comparison
+                distances[globalId] = distSq;
             }
         };
 
@@ -89,20 +96,19 @@ public class GpuKnnClassifier implements IClassifier {
                             .getDeviceByName(selectedName);
                 }
 
-                // Execute Kernel
+                // Execute Kernel in 1D Mode with Explicit Local Size
+                int totalWork = numTest * numTrain;
+                int localSize = 256;
+                // Pad global size to be multiple of localSize
+                int globalSize = ((totalWork + localSize - 1) / localSize) * localSize;
+
                 Range range;
                 if (selectedDevice != null) {
-                    // Attempt to create range on specific device
-                    // Note: Aparapi 2.0/3.0 syntax often uses device.createRange or
-                    // Range.create(device, ...)
-                    // We will try Range.create(device, ...) if available, checking API compat logic
-                    // implies:
-                    // If Device class has createRange methods, use them.
-                    // Fallback to default if null.
-                    range = selectedDevice.createRange2D(numTest, numTrain);
-                    System.out.println("CORE: Targeting Specific GPU: " + selectedDevice.getShortDescription());
+                    range = selectedDevice.createRange(globalSize, localSize);
+                    System.out.println(
+                            "CORE: Targeting Specific GPU (1D Explicit): " + selectedDevice.getShortDescription());
                 } else {
-                    range = Range.create2D(numTest, numTrain);
+                    range = Range.create(globalSize, localSize);
                 }
 
                 kernel.execute(range);
@@ -111,7 +117,9 @@ public class GpuKnnClassifier implements IClassifier {
                     System.out.println("CORE: GPU KNN Mode: " + kernel.getTargetDevice().getType());
                 }
             } catch (Exception e) {
-                System.err.println("CORE: GPU Execution Failed. Tripping Circuit Breaker. Switching to CPU Fallback.");
+                System.err.println("CORE: GPU Execution Failed. Exception follows:");
+                e.printStackTrace();
+                System.err.println("CORE: Tripping Circuit Breaker. Switching to CPU Fallback.");
                 gpuCircuitBreakerOpen = true; // Trip the breaker
                 calculateDistancesCpu(flatTrain, flatTest, numDims, distances);
             } finally {
@@ -120,7 +128,6 @@ public class GpuKnnClassifier implements IClassifier {
         }
 
         // CPU Side: Find K-Nearest Neighbors from the distance matrix
-        // CPU Side: Find K-Nearest Neighbors from the distance matrix from GPU
         int[] predictions = new int[numTest];
 
         // Parallel processing for O(N) reduction instead of O(N log N) sort

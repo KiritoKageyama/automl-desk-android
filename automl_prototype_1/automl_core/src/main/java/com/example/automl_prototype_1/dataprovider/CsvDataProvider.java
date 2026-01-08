@@ -8,7 +8,10 @@ import org.apache.commons.csv.CSVRecord;
 import java.io.IOException;
 import java.io.Reader;
 import java.util.ArrayList;
+import java.util.Iterator;
 import java.util.List;
+import java.util.Map;
+import java.util.HashMap;
 
 /**
  * Provides functionality to load datasets from CSV sources efficiently.
@@ -29,125 +32,126 @@ public class CsvDataProvider {
             throw new IOException("Invalid Reader provided (null). Cannot load dataset.");
         }
 
-        System.out.println("CsvDataProvider: Loading dataset from Reader (Efficient Mode)...");
+        System.out.println("CsvDataProvider: Loading dataset from Reader (Truly Efficient Mode)...");
         List<double[]> tempRows = new ArrayList<>();
-        List<String> headers;
-        boolean hasHeaders = false;
+        List<String> headers = null;
+        // boolean hasHeaders = false; // Removed unused variable
 
-        // First pass: Read first line to detect if it contains headers or data
-        CSVFormat detectFormat = CSVFormat.DEFAULT.builder()
+        // Build format with robust settings
+        CSVFormat format = CSVFormat.DEFAULT.builder()
                 .setTrim(true)
                 .setIgnoreEmptyLines(true)
                 .build();
 
-        try (CSVParser detectParser = detectFormat.parse(dataReader)) {
-            List<CSVRecord> records = detectParser.getRecords();
-            if (records.isEmpty()) {
+        // Use Iterator to stream records instead of loading all into memory
+        try (CSVParser parser = format.parse(dataReader)) {
+            Iterator<CSVRecord> iterator = parser.iterator();
+
+            if (!iterator.hasNext()) {
                 throw new IOException("CSV file is empty.");
             }
 
-            CSVRecord firstRecord = records.get(0);
+            // 1. Analyze First Record
+            CSVRecord firstRecord = iterator.next();
             int numCols = firstRecord.size();
+            boolean firstRowIsHeader = false;
 
-            // Check if first row is all numeric (means no headers)
-            boolean allNumeric = true;
-            for (int i = 0; i < firstRecord.size(); i++) {
+            // Heuristic A: Check for non-numeric types in first row
+            boolean hasNonNumeric = false;
+            for (int i = 0; i < numCols; i++) {
                 String val = firstRecord.get(i).trim();
-                if (!val.isEmpty()) {
-                    try {
-                        Double.parseDouble(val);
-                    } catch (NumberFormatException e) {
-                        // Non-numeric found - could be header or categorical value
-                        // If it's in position 0 or 1, might be ID or Class label
-                        if (i == 0 || i == 1) {
-                            // Could be data (ID or categorical class)
-                            continue;
-                        } else {
-                            // Non-numeric in feature columns suggests headers
-                            allNumeric = false;
-                            break;
-                        }
-                    }
+                if (val.isEmpty())
+                    continue;
+                try {
+                    Double.parseDouble(val);
+                } catch (NumberFormatException e) {
+                    hasNonNumeric = true; // Found a string, likely a header
+                    break;
                 }
             }
 
-            // If all numeric (except maybe first 2 columns), assume no headers
-            if (allNumeric || firstRecord.get(1).matches("[MmBb]")) {
-                // No headers - generate standard names
+            // Heuristic B: Specific domain check (kept for backward compat but guarded)
+            boolean isBreastCancerId = (numCols > 1 && firstRecord.get(1).matches("[MmBb]"));
+
+            if (hasNonNumeric && !isBreastCancerId) {
+                firstRowIsHeader = true;
+            }
+
+            // 2. Setup Headers
+            if (firstRowIsHeader) {
+                System.out.println("CsvDataProvider: Header row detected.");
+                headers = new ArrayList<>();
+                for (String h : firstRecord) {
+                    headers.add(h.trim());
+                }
+            } else {
                 System.out.println("CsvDataProvider: No header row detected. Generating standard column names...");
-                hasHeaders = false;
                 headers = new ArrayList<>();
                 for (int i = 0; i < numCols; i++) {
-                    // Heuristic: If it's the last column, call it "Target_Class" to be helpful,
-                    // otherwise Column_X
                     if (i == numCols - 1) {
                         headers.add("Target_Class");
                     } else {
                         headers.add("Column_" + i);
                     }
                 }
-                System.out.println("CsvDataProvider: Generated headers: " + headers);
+            }
+
+            // 3. Prepare Encoders
+            Map<Integer, Map<String, Double>> columnEncoders = new HashMap<>();
+            Map<Integer, Double> nextCodes = new HashMap<>();
+
+            // 4. Process Records (Streamed)
+            // If the first row was NOT a header, we must process it as data
+            if (!firstRowIsHeader) {
+                processRecord(firstRecord, tempRows, numCols, columnEncoders, nextCodes);
+            }
+
+            // Iterate the rest
+            while (iterator.hasNext()) {
+                processRecord(iterator.next(), tempRows, numCols, columnEncoders, nextCodes);
+            }
+
+            if (tempRows.isEmpty()) {
+                System.out.println("CsvDataProvider: Warning - Processed CSV but found no valid data rows.");
             } else {
-                // Has headers - use them
-                System.out.println("CsvDataProvider: Header row detected.");
-                hasHeaders = true;
-                headers = new ArrayList<>();
-                for (int i = 0; i < firstRecord.size(); i++) {
-                    headers.add(firstRecord.get(i).trim());
-                }
-                System.out.println("CsvDataProvider: Headers found: " + headers);
-            }
-
-            int numCols2 = headers.size();
-
-            // Maps column index to a map of (String value -> Double code)
-            java.util.Map<Integer, java.util.Map<String, Double>> columnEncoders = new java.util.HashMap<>();
-            // Maps column index to the next available code
-            java.util.Map<Integer, Double> nextCodes = new java.util.HashMap<>();
-
-            // Process all records (skip first if it was headers)
-            int startIdx = hasHeaders ? 1 : 0;
-            for (int recordIdx = startIdx; recordIdx < records.size(); recordIdx++) {
-                CSVRecord csvRecord = records.get(recordIdx);
-                double[] rowData = new double[numCols2];
-                for (int i = 0; i < numCols2; i++) {
-                    // Handle potential missing columns in a row
-                    if (i < csvRecord.size()) {
-                        String val = csvRecord.get(i).trim();
-                        try {
-                            rowData[i] = Double.parseDouble(val);
-                        } catch (NumberFormatException e) {
-                            // It's a string (categorical). Encode it.
-                            columnEncoders.putIfAbsent(i, new java.util.HashMap<>());
-                            java.util.Map<String, Double> encoder = columnEncoders.get(i);
-
-                            if (!encoder.containsKey(val)) {
-                                double code = nextCodes.getOrDefault(i, 0.0);
-                                encoder.put(val, code);
-                                nextCodes.put(i, code + 1.0);
-                            }
-                            rowData[i] = encoder.get(val);
-                        }
-                    } else {
-                        rowData[i] = 0.0; // Missing value
-                    }
-                }
-                tempRows.add(rowData);
+                System.out.println("CsvDataProvider: Loaded " + tempRows.size() + " records.");
             }
         }
 
-        if (tempRows.isEmpty() && !headers.isEmpty()) {
-            System.out.println("CsvDataProvider: Warning - Loaded headers but no data records found.");
-        } else {
-            System.out.println(
-                    "CsvDataProvider: Loaded " + tempRows.size() + " records with " + headers.size() + " features.");
-        }
-
-        // Convert List<double[]> to double[][]
         double[][] features = tempRows.toArray(new double[0][]);
-
-        // Create Dataset with all data in 'features', labels null, target null
-        // The target will be separated later using dataset.getFeatureMatrix(targetName)
         return new Dataset(null, headers, features, null, null);
+    }
+
+    private void processRecord(CSVRecord record, List<double[]> rows, int expectedCols,
+            Map<Integer, Map<String, Double>> encoders,
+            Map<Integer, Double> nextCodes) {
+
+        double[] rowData = new double[expectedCols];
+        for (int i = 0; i < expectedCols; i++) {
+            if (i < record.size()) {
+                String val = record.get(i).trim();
+                try {
+                    if (val.isEmpty()) {
+                        rowData[i] = 0.0;
+                    } else {
+                        rowData[i] = Double.parseDouble(val);
+                    }
+                } catch (NumberFormatException e) {
+                    // Categorical encoding
+                    encoders.putIfAbsent(i, new HashMap<>());
+                    Map<String, Double> encoder = encoders.get(i);
+
+                    if (!encoder.containsKey(val)) {
+                        double code = nextCodes.getOrDefault(i, 0.0);
+                        encoder.put(val, code);
+                        nextCodes.put(i, code + 1.0);
+                    }
+                    rowData[i] = encoder.get(val);
+                }
+            } else {
+                rowData[i] = 0.0; // Missing column padding
+            }
+        }
+        rows.add(rowData);
     }
 }

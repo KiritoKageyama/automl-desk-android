@@ -99,6 +99,7 @@ public class GeneticAlgorithm extends AbstractFeatureSelectionAlgorithm {
         Solution bestOfGeneration = findBestInPopulation();
 
         // Adaptive Mutation Logic
+        // Adaptive Mutation Logic
         if (bestOfGeneration.fitness > this.bestOverallSolution.fitness) {
             this.bestOverallSolution = new Solution(bestOfGeneration);
             this.stagnationCounter = 0; // Reset
@@ -107,14 +108,22 @@ public class GeneticAlgorithm extends AbstractFeatureSelectionAlgorithm {
             this.stagnationCounter++;
             if (this.stagnationCounter >= 5) {
                 // Boost mutation to escape local optimum
+                double oldRate = this.currentMutationRate;
                 this.currentMutationRate = Math.min(0.3, this.currentMutationRate * 1.5);
-                System.out.printf("GA: Stagnation detected (%d gens). Boosting mutation to %.3f%n", stagnationCounter,
-                        currentMutationRate);
+
+                // Log only on changes or periodically
+                if (Math.abs(oldRate - this.currentMutationRate) > 0.001 || this.stagnationCounter % 5 == 0) {
+                    System.out.printf("GA: Stagnation detected (%d gens). Boosting mutation to %.3f%n",
+                            stagnationCounter,
+                            currentMutationRate);
+                }
             }
         }
 
-        System.out.printf("GA Gen %d/%d: Best Fitness = %.4f (Mut: %.2f)%n", iteration + 1, maxGenerations,
-                this.bestOverallSolution.fitness, this.currentMutationRate);
+        if ((iteration + 1) % 10 == 0 || iteration == 0 || iteration == maxGenerations - 1) {
+            System.out.printf("GA Gen %d/%d: Best Fitness = %.4f (Mut: %.2f)%n", iteration + 1, maxGenerations,
+                    this.bestOverallSolution.fitness, this.currentMutationRate);
+        }
     }
 
     // --- NEW evaluatePopulation that accepts folds ---

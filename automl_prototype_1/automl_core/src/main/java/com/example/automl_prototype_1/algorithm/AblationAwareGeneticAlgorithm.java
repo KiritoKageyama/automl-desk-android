@@ -17,6 +17,11 @@ public class AblationAwareGeneticAlgorithm extends GeneticAlgorithm {
         this.useBias = useBias;
     }
 
+    // Constructor for HyperparameterTuningService (defaults to full features)
+    public AblationAwareGeneticAlgorithm(int populationSize, int maxIterations) {
+        this(populationSize, maxIterations, true, true);
+    }
+
     @Override
     protected IClassifier getSearchClassifier(IClassifier originalClassifier) {
         if (!useProxy) {

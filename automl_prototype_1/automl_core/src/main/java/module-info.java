@@ -21,4 +21,5 @@
 
     opens com.example.automl_prototype_1.model to com.fasterxml.jackson.databind;
     opens com.example.automl_prototype_1.service.agentic to com.fasterxml.jackson.databind;
+    opens com.example.automl_prototype_1.classifier to aparapi;
 }

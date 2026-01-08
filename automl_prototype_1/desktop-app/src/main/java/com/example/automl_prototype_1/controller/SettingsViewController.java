@@ -18,6 +18,8 @@ public class SettingsViewController {
     private CheckBox darkModeCheckBox;
     @FXML
     private CheckBox chkUseGpu;
+    @FXML
+    private CheckBox chkUseWsl;
 
     public SettingsViewController() {
         // No-arg constructor
@@ -114,6 +116,14 @@ public class SettingsViewController {
             chkUseGpu.selectedProperty().addListener((obs, oldVal, newVal) -> {
                 System.out.println("GPU Acceleration preference set to: " + newVal);
                 com.example.automl_prototype_1.service.AppStateService.getInstance().setUseGpu(newVal);
+            });
+        }
+
+        // Initialize WSL Checkbox
+        if (chkUseWsl != null) {
+            chkUseWsl.setSelected(com.example.automl_prototype_1.service.AppStateService.getInstance().isUseWsl());
+            chkUseWsl.selectedProperty().addListener((obs, oldVal, newVal) -> {
+                com.example.automl_prototype_1.service.AppStateService.getInstance().setUseWsl(newVal);
             });
         }
     }

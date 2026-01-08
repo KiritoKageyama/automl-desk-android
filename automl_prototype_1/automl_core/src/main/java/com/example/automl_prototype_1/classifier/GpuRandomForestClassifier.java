@@ -59,28 +59,21 @@ public class GpuRandomForestClassifier implements IClassifier {
                 // We will hardcode a helper check here or assume specific path for now.
                 // NOTE: In production, extract from JAR. Here, assuming dev environment path
                 // structure.
-                File scriptFile = new File("automl_core/src/main/resources/python/train_rf.py");
-                if (!scriptFile.exists()) {
-                    // Fallback check for different working dir
-                    scriptFile = new File("src/main/resources/python/train_rf.py");
-                }
+                // Extract script from resources
+                File scriptFile = PythonExecutionService.getInstance().extractScriptToTemp("train_rf.py");
 
-                if (scriptFile.exists()) {
-                    boolean success = PythonExecutionService.getInstance().trainModel(
-                            scriptFile,
-                            trainFile,
-                            modelFile,
-                            "--n_estimators", String.valueOf(nTrees));
+                boolean success = PythonExecutionService.getInstance().trainModel(
+                        scriptFile,
+                        trainFile,
+                        modelFile,
+                        "--n_estimators", String.valueOf(nTrees));
 
-                    if (success) {
-                        this.pythonModelPath = modelFile;
-                        this.usePython = true;
-                        LogService.info("GpuRF", "Python training successful. Model saved to " + modelFile.getName());
-                        trainFile.delete(); // Cleanup data
-                        return; // Early exit, success
-                    }
-                } else {
-                    LogService.error("GpuRF", "Python script not found at " + scriptFile.getAbsolutePath());
+                if (success) {
+                    this.pythonModelPath = modelFile;
+                    this.usePython = true;
+                    LogService.info("GpuRF", "Python training successful. Model saved to " + modelFile.getName());
+                    trainFile.delete(); // Cleanup data
+                    return; // Early exit, success
                 }
             } catch (Exception e) {
                 LogService.error("GpuRF", "Python training failed: " + e.getMessage());
@@ -111,9 +104,7 @@ public class GpuRandomForestClassifier implements IClassifier {
                 File inputFile = createTempCsv(features, null); // No labels
                 File outputFile = File.createTempFile("preds_" + UUID.randomUUID(), ".csv");
 
-                File scriptFile = new File("automl_core/src/main/resources/python/predict.py");
-                if (!scriptFile.exists())
-                    scriptFile = new File("src/main/resources/python/predict.py");
+                File scriptFile = PythonExecutionService.getInstance().extractScriptToTemp("predict.py");
 
                 boolean success = PythonExecutionService.getInstance().predict(
                         scriptFile,

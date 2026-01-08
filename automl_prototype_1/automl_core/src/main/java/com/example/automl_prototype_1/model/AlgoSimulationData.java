@@ -6,6 +6,9 @@ public class AlgoSimulationData {
     private String processDescription;
     private String sampleOutput;
 
+    public AlgoSimulationData() {
+    }
+
     public AlgoSimulationData(String name, String coreFormula, String processDescription, String sampleOutput) {
         this.name = name;
         this.coreFormula = coreFormula;

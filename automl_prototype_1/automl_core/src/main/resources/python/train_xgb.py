@@ -21,6 +21,11 @@ def train():
         X = df.iloc[:, :-1].values
         y = df.iloc[:, -1].values
 
+        # Encode labels to 0..N-1 to satisfy XGBoost use_label_encoder=False requirement
+        from sklearn.preprocessing import LabelEncoder
+        le = LabelEncoder()
+        y = le.fit_transform(y)
+
         # Check for GPU
         # In modern XGBoost, we set device="cuda"
         # We try to create a GPU classifier

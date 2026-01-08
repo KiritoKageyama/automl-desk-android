@@ -32,6 +32,10 @@ public class GreyWolfOptimizer extends AbstractFeatureSelectionAlgorithm {
         this.maxIterations = maxIterations;
     }
 
+    public GreyWolfOptimizer(int populationSize, int maxIterations) {
+        this(populationSize, maxIterations, 5, 20);
+    }
+
     public GreyWolfOptimizer() {
         this(30, 100, 5, 20);
     }

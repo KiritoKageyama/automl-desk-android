@@ -5,17 +5,20 @@ import java.util.List;
 public class ExecutionResult {
 
     private String algorithmName;
-    private final double accuracy;
-    private final double aucRoc;
-    private final double loss;
-    private final long executionTimeMs;
-    private final int originalFeatures;
-    private final int selectedFeatures;
-    private final double precision;
-    private final double recall;
-    private final double f1Score;
-    private final List<Double> fitnessHistory;
-    private final int[][] confusionMatrix;
+    private double accuracy;
+    private double aucRoc;
+    private double loss;
+    private long executionTimeMs;
+    private int originalFeatures;
+    private int selectedFeatures;
+    private double precision;
+    private double recall;
+    private double f1Score;
+    private List<Double> fitnessHistory;
+    private int[][] confusionMatrix;
+
+    public ExecutionResult() {
+    }
 
     public void setAlgorithmName(String algorithmName) {
         this.algorithmName = algorithmName;

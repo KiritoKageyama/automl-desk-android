@@ -10,7 +10,7 @@ import java.util.stream.IntStream;
 public class IGPSO extends AbstractFeatureSelectionAlgorithm {
 
     private final int populationSize, maxIterations;
-    private final double c1, c2, w, crossoverRate, mutationRate;
+    private final double crossoverRate;
     private double[][] positions, velocities, pBestPositions;
     private double[] fitness, pBestFitness;
     private double[] gBestPosition;
@@ -23,11 +23,7 @@ public class IGPSO extends AbstractFeatureSelectionAlgorithm {
         super(kFolds, patience);
         this.populationSize = populationSize;
         this.maxIterations = maxIterations;
-        this.c1 = 1.5;
-        this.c2 = 1.5;
-        this.w = 0.7;
         this.crossoverRate = 0.8;
-        this.mutationRate = 0.05;
     }
 
     public IGPSO(int populationSize, int maxIterations) {

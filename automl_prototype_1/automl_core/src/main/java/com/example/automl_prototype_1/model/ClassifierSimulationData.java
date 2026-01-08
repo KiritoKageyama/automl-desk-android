@@ -6,6 +6,9 @@ public class ClassifierSimulationData {
     private String lossFormula;
     private String sampleOutput;
 
+    public ClassifierSimulationData() {
+    }
+
     public ClassifierSimulationData(String name, String decisionFunction, String lossFormula, String sampleOutput) {
         this.name = name;
         this.decisionFunction = decisionFunction;

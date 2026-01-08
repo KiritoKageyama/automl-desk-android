@@ -259,10 +259,10 @@ public class DashboardController {
             case "WWO" -> new WaterWaveOptimization();
             case "BPSO" -> new BinaryParticleSwarmOptimization();
             case "ASO" -> new AtomSearchOptimization();
-            case "PLS" -> new ParallelLocalSearchAlgorithm();
+            case "PLS", "Parallel Local Search" -> new ParallelLocalSearchAlgorithm();
             case "Simulated Annealing", "SA" -> new SimulatedAnnealing();
-            case "GWO" -> new GreyWolfOptimizer();
-            case "DE" -> new DifferentialEvolution();
+            case "GWO", "Grey Wolf Optimizer" -> new GreyWolfOptimizer();
+            case "DE", "Differential Evolution" -> new DifferentialEvolution();
             default -> null;
         };
     }

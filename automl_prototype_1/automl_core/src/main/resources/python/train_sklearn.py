@@ -10,7 +10,7 @@ from sklearn.tree import DecisionTreeClassifier
 parser = argparse.ArgumentParser(description='Train Scikit-Learn Models')
 parser.add_argument('--data', required=True, help='Path to training data csv')
 parser.add_argument('--output', required=True, help='Path to save model pickle')
-parser.add_argument('--model_type', required=True, choices=['adaboost', 'gbm', 'dt'], help='Type of model to train')
+parser.add_argument('--model_type', required=True, choices=['adaboost', 'gbm', 'dt', 'xgboost'], help='Type of model to train')
 parser.add_argument('--n_estimators', type=int, default=100)
 parser.add_argument('--max_depth', type=int, default=3)
 parser.add_argument('--learning_rate', type=float, default=0.1)
@@ -26,10 +26,6 @@ def train():
         print(f"Training {args.model_type}...")
         
         if args.model_type == 'adaboost':
-            # AdaBoost uses DecisionTree(max_depth=1) by default, we can customize base estimator if needed
-            # For simplicity we stick to default base estimator (stump) or allow depth control via simple params if we complexify later
-            # But standard AdaBoost doesn't take max_depth directly for the booster itself, it takes base_estimator.
-            # We will use default (DecisionTreeClassifier(max_depth=1)) for now or minimal customization.
             model = AdaBoostClassifier(
                 n_estimators=args.n_estimators,
                 learning_rate=args.learning_rate,
@@ -48,7 +44,47 @@ def train():
                 max_depth=None if args.max_depth <= 0 else args.max_depth
             )
 
-        model.fit(X, y)
+        elif args.model_type == 'xgboost':
+            try:
+                import xgboost as xgb
+                # Check for GPU
+                try:
+                    # Attempt to use GPU parameters
+                    model = xgb.XGBClassifier(
+                        n_estimators=args.n_estimators,
+                        max_depth=args.max_depth,
+                        learning_rate=args.learning_rate,
+                        tree_method='gpu_hist', 
+                        predictor='gpu_predictor',
+                        use_label_encoder=False,
+                        eval_metric='logloss'
+                    )
+                    # Simple fit to check if GPU works (lazy check) or just trust config
+                    model.fit(X, y)
+                    print("Trained XGBoost with GPU parameters.")
+                except Exception as gpu_e:
+                    print(f"XGBoost GPU failed ({gpu_e}), falling back to CPU.")
+                    model = xgb.XGBClassifier(
+                        n_estimators=args.n_estimators,
+                        max_depth=args.max_depth,
+                        learning_rate=args.learning_rate,
+                        n_jobs=-1,
+                        use_label_encoder=False,
+                        eval_metric='logloss'
+                    )
+                    model.fit(X, y)
+            except ImportError:
+                print("XGBoost library not found. Using sklearn GradientBoosting as fallback.")
+                model = GradientBoostingClassifier(
+                    n_estimators=args.n_estimators,
+                    max_depth=args.max_depth,
+                    learning_rate=args.learning_rate
+                )
+                model.fit(X, y)
+
+        if args.model_type != 'xgboost': # XGBoost already fitted in block above
+            model.fit(X, y)
+            
         print(f"{args.model_type} training complete.")
 
         with open(args.output, 'wb') as f:

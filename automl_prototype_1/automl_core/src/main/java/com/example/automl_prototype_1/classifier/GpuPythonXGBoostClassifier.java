@@ -47,30 +47,32 @@ public class GpuPythonXGBoostClassifier implements IClassifier {
                 File trainFile = createTempCsv(features, labels);
                 File modelFile = File.createTempFile("xgb_model_" + UUID.randomUUID(), ".pkl");
 
-                File scriptFile = new File("automl_core/src/main/resources/python/train_xgb.py");
-                if (!scriptFile.exists())
-                    scriptFile = new File("src/main/resources/python/train_xgb.py");
+                // Extract script from resources (works in JAR and IDE)
+                File scriptFile = PythonExecutionService.getInstance().extractScriptToTemp("train_xgb.py");
 
-                if (scriptFile.exists()) {
-                    boolean success = PythonExecutionService.getInstance().trainModel(
-                            scriptFile,
-                            trainFile,
-                            modelFile,
-                            "--n_estimators", String.valueOf(nEstimators),
-                            "--max_depth", String.valueOf(maxDepth));
+                boolean success = PythonExecutionService.getInstance().trainModel(
+                        scriptFile,
+                        trainFile,
+                        modelFile,
+                        "--n_estimators", String.valueOf(nEstimators),
+                        "--max_depth", String.valueOf(maxDepth));
 
-                    if (success) {
-                        this.pythonModelPath = modelFile;
-                        LogService.info("GpuPyXGB", "Training successful. Model saved.");
-                    }
-                } else {
-                    LogService.error("GpuPyXGB", "Script not found: train_xgb.py");
+                // Clean up script file
+                // scriptFile.delete(); // allow util to handle cleanup or let it persist for
+                // debug for now
+
+                if (success) {
+                    this.pythonModelPath = modelFile;
+                    LogService.info("GpuPyXGB", "Training successful. Model saved.");
                 }
+
                 trainFile.delete();
             } catch (Exception e) {
                 LogService.error("GpuPyXGB", "Training failed: " + e.getMessage());
             }
-        } else {
+        } else
+
+        {
             LogService.error("GpuPyXGB", "Python not available. Cannot train.");
         }
     }
@@ -82,9 +84,7 @@ public class GpuPythonXGBoostClassifier implements IClassifier {
                 File inputFile = createTempCsv(features, null);
                 File outputFile = File.createTempFile("preds_xgb_" + UUID.randomUUID(), ".csv");
 
-                File scriptFile = new File("automl_core/src/main/resources/python/predict.py");
-                if (!scriptFile.exists())
-                    scriptFile = new File("src/main/resources/python/predict.py");
+                File scriptFile = PythonExecutionService.getInstance().extractScriptToTemp("predict.py");
 
                 boolean success = PythonExecutionService.getInstance().predict(
                         scriptFile,

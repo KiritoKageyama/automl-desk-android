@@ -1,15 +1,15 @@
 package com.example.automl_prototype_1.registry;
 
-import com.example.automl_prototype_1.algorithm.OptimizationAlgorithm;
+import com.example.automl_prototype_1.algorithm.*;
+
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
+// import java.util.function.Supplier; // Removed unused import
 
 /**
- * Central registry for managing available optimization algorithms.
- * Allows dynamic registration and discovery of algorithms.
+ * Central registry and factory for managing available optimization algorithms.
+ * Acts as a Factory to ensure fresh instances are created for each request.
  */
 public class AlgorithmRegistry {
     private static final AlgorithmRegistry instance = new AlgorithmRegistry();
@@ -18,48 +18,70 @@ public class AlgorithmRegistry {
         return instance;
     }
 
-    private final Map<String, OptimizationAlgorithm> algorithms = new ConcurrentHashMap<>();
-
     private AlgorithmRegistry() {
     }
 
     /**
-     * Registers a new optimization algorithm.
+     * Retrieves a new instance of an algorithm by its name/ID.
      * 
-     * @param algorithm The algorithm to register.
+     * @param name The name/ID of the algorithm (e.g. "GA", "IGPSO").
+     * @return A new OptimizationAlgorithm instance, or null if not found.
      */
-    public void register(OptimizationAlgorithm algorithm) {
-        if (algorithm != null) {
-            algorithms.put(algorithm.getAlgorithmName(), algorithm);
-            System.out.println("Registered algorithm: " + algorithm.getAlgorithmName());
+    public OptimizationAlgorithm getAlgorithm(String name) {
+        if (name == null)
+            return null;
+
+        // Factory Logic - Returns FRESH instances to avoid state sharing
+        switch (name.toUpperCase()) {
+            case "GA":
+            case "GENETIC ALGORITHM":
+                return new GeneticAlgorithm();
+            case "IGPSO":
+                return new IGPSO();
+            case "WWO":
+            case "WATER WAVE OPTIMIZATION":
+                return new WaterWaveOptimization();
+            case "BPSO":
+            case "BINARY PSO":
+                return new BinaryParticleSwarmOptimization();
+            case "ASO":
+            case "ATOM SEARCH OPTIMIZATION":
+                return new AtomSearchOptimization();
+            case "PLS":
+            case "PARALLEL LOCAL SEARCH":
+                return new ParallelLocalSearchAlgorithm();
+            case "SA":
+            case "SIMULATED ANNEALING":
+                return new SimulatedAnnealing();
+            case "GWO":
+            case "GREY WOLF OPTIMIZER":
+                return new GreyWolfOptimizer();
+            case "DE":
+            case "DIFFERENTIAL EVOLUTION":
+                return new DifferentialEvolution();
+            case "ABLATION GA":
+                return new AblationAwareGeneticAlgorithm(50, 100); // Default test params
+            default:
+                return null;
         }
     }
 
     /**
-     * Retrieves an algorithm by its name.
+     * Returns a list of all supported algorithm names.
      * 
-     * @param name The name of the algorithm.
-     * @return The algorithm instance, or null if not found.
-     */
-    public OptimizationAlgorithm getAlgorithm(String name) {
-        return algorithms.get(name);
-    }
-
-    /**
-     * Returns a list of all registered algorithms.
-     * 
-     * @return Unmodifiable list of algorithms.
-     */
-    public List<OptimizationAlgorithm> getAllAlgorithms() {
-        return Collections.unmodifiableList(new ArrayList<>(algorithms.values()));
-    }
-
-    /**
-     * Returns a list of all registered algorithm names.
-     * 
-     * @return Unmodifiable list of names.
+     * @return List of names.
      */
     public List<String> getAlgorithmNames() {
-        return Collections.unmodifiableList(new ArrayList<>(algorithms.keySet()));
+        List<String> codes = new ArrayList<>();
+        codes.add("GA");
+        codes.add("IGPSO");
+        codes.add("WWO");
+        codes.add("BPSO");
+        codes.add("ASO");
+        codes.add("PLS");
+        codes.add("SA");
+        codes.add("GWO");
+        codes.add("DE");
+        return Collections.unmodifiableList(codes);
     }
 }

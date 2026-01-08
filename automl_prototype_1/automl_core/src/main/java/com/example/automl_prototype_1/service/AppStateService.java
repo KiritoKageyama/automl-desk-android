@@ -134,7 +134,7 @@ public class AppStateService {
         this.executionResults = executionResults;
     }
 
-    private boolean useGpu = false;
+    private boolean useGpu = true;
 
     public boolean isUseGpu() {
         return useGpu;
@@ -145,7 +145,7 @@ public class AppStateService {
         LogService.info("AppStateService", "GPU Acceleration Preference updated: " + useGpu);
     }
 
-    private String selectedGpuName = null;
+    private String selectedGpuName = "NVIDIA"; // Default to NVIDIA as requested
 
     public String getSelectedGpuName() {
         return selectedGpuName;
@@ -164,5 +164,26 @@ public class AppStateService {
 
     public void setLoggingEnabled(boolean loggingEnabled) {
         this.loggingEnabled = loggingEnabled;
+    }
+
+    // --- WSL Configuration ---
+    private boolean useWsl = true;
+    private String wslDistributionName = "Ubuntu"; // Default
+
+    public boolean isUseWsl() {
+        return useWsl;
+    }
+
+    public void setUseWsl(boolean useWsl) {
+        this.useWsl = useWsl;
+        LogService.info("AppStateService", "WSL Mode Preference updated: " + useWsl);
+    }
+
+    public String getWslDistributionName() {
+        return wslDistributionName;
+    }
+
+    public void setWslDistributionName(String wslDistributionName) {
+        this.wslDistributionName = wslDistributionName;
     }
 }

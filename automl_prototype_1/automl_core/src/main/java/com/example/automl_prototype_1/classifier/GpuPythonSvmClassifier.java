@@ -45,24 +45,18 @@ public class GpuPythonSvmClassifier implements IClassifier {
                 File trainFile = createTempCsv(features, labels);
                 File modelFile = File.createTempFile("svm_model_" + UUID.randomUUID(), ".pkl");
 
-                File scriptFile = new File("automl_core/src/main/resources/python/train_svm.py");
-                if (!scriptFile.exists())
-                    scriptFile = new File("src/main/resources/python/train_svm.py");
+                File scriptFile = PythonExecutionService.getInstance().extractScriptToTemp("train_svm.py");
 
-                if (scriptFile.exists()) {
-                    boolean success = PythonExecutionService.getInstance().trainModel(
-                            scriptFile,
-                            trainFile,
-                            modelFile,
-                            "--C", String.valueOf(C),
-                            "--kernel", kernel);
+                boolean success = PythonExecutionService.getInstance().trainModel(
+                        scriptFile,
+                        trainFile,
+                        modelFile,
+                        "--C", String.valueOf(C),
+                        "--kernel", kernel);
 
-                    if (success) {
-                        this.pythonModelPath = modelFile;
-                        LogService.info("GpuPySVM", "Training successful. Model saved.");
-                    }
-                } else {
-                    LogService.error("GpuPySVM", "Script not found: train_svm.py");
+                if (success) {
+                    this.pythonModelPath = modelFile;
+                    LogService.info("GpuPySVM", "Training successful. Model saved.");
                 }
                 trainFile.delete();
             } catch (Exception e) {
@@ -80,9 +74,7 @@ public class GpuPythonSvmClassifier implements IClassifier {
                 File inputFile = createTempCsv(features, null);
                 File outputFile = File.createTempFile("preds_svm_" + UUID.randomUUID(), ".csv");
 
-                File scriptFile = new File("automl_core/src/main/resources/python/predict.py");
-                if (!scriptFile.exists())
-                    scriptFile = new File("src/main/resources/python/predict.py");
+                File scriptFile = PythonExecutionService.getInstance().extractScriptToTemp("predict.py");
 
                 boolean success = PythonExecutionService.getInstance().predict(
                         scriptFile,

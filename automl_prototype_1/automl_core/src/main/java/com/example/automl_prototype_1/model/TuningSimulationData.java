@@ -6,6 +6,9 @@ public class TuningSimulationData {
     private String optimizationGoal;
     private String sampleOutput;
 
+    public TuningSimulationData() {
+    }
+
     public TuningSimulationData(String strategyName, String parameterDistribution, String optimizationGoal,
             String sampleOutput) {
         this.strategyName = strategyName;

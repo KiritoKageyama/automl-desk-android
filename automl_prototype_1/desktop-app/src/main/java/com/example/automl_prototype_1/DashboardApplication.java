@@ -27,6 +27,7 @@ public class DashboardApplication extends Application {
 
     @Override
     public void start(Stage stage) throws Exception {
+        System.out.println("CORE: STARTING APP - FORCE-REBUILD-v2 - IF YOU SEE THIS, IT IS NEW CODE");
         // --- Clean Architecture: Instantiate Service ---
         com.example.automl_prototype_1.service.AppStateService appStateService = com.example.automl_prototype_1.service.AppStateService
                 .getInstance();

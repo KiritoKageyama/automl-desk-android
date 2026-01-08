@@ -28,6 +28,10 @@ public class DifferentialEvolution extends AbstractFeatureSelectionAlgorithm {
         this.maxIterations = maxIterations;
     }
 
+    public DifferentialEvolution(int populationSize, int maxIterations) {
+        this(populationSize, maxIterations, 5, 20);
+    }
+
     public DifferentialEvolution() {
         this(30, 100, 5, 20);
     }

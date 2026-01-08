@@ -157,7 +157,7 @@ public class GpuLogisticRegression implements IClassifier {
 
     private void trainCpu(float[] flatFeatures, float[] floatLabels, int numSamples, int numFeatures) {
         // Simple CPU Gradient Descent
-        float[] currentPredictions = new float[numSamples];
+        // Simple CPU Gradient Descent
 
         for (int epoch = 0; epoch < epochs; epoch++) {
             float[] dWeights = new float[numFeatures];
