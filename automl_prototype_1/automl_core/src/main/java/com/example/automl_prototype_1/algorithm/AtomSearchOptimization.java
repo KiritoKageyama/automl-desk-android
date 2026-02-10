@@ -53,6 +53,21 @@ public class AtomSearchOptimization extends AbstractFeatureSelectionAlgorithm {
     }
 
     @Override
+    protected double getAverageFitness() {
+        if (fitnesses == null || fitnesses.length == 0)
+            return 0.0;
+        double sum = 0.0;
+        int count = 0;
+        for (double f : fitnesses) {
+            if (f != Double.NEGATIVE_INFINITY) {
+                sum += f;
+                count++;
+            }
+        }
+        return count > 0 ? sum / count : 0.0;
+    }
+
+    @Override
     protected void initialize(int numFeatures, Dataset dataset, IClassifier classifier, List<Fold> folds) {
         this.atoms = new double[populationSize][numFeatures];
         this.velocities = new double[populationSize][numFeatures];
@@ -70,7 +85,7 @@ public class AtomSearchOptimization extends AbstractFeatureSelectionAlgorithm {
                 bestAtomPosition = toBinaryPosition(atoms[i]);
             }
         }
-        System.out.println("ASO Initial Best Fitness: " + this.bestFitness);
+        com.example.automl_prototype_1.service.LogService.info("ASO", "Initial Best Fitness: " + this.bestFitness);
     }
 
     @Override
@@ -100,61 +115,73 @@ public class AtomSearchOptimization extends AbstractFeatureSelectionAlgorithm {
             currentVelocities[i] = java.util.Arrays.copyOf(velocities[i], numFeatures);
         }
 
-        // Parallel processing of particles
-        List<FitnessResult> results = indices.parallelStream().map(i -> {
-            var rand = java.util.concurrent.ThreadLocalRandom.current();
-            double[] force = new double[numFeatures];
+        // Parallel processing of particles with bounded concurrency (Smart Parallelism)
+        int optimalThreads = com.example.automl_prototype_1.service.HardwareAcceleratorService
+                .calculateOptimalThreadCount();
+        List<FitnessResult> results;
+        @SuppressWarnings("resource")
+        java.util.concurrent.ForkJoinPool customThreadPool = new java.util.concurrent.ForkJoinPool(optimalThreads);
+        try {
+            results = customThreadPool.submit(() -> indices.parallelStream().map(i -> {
+                var rand = java.util.concurrent.ThreadLocalRandom.current();
+                double[] force = new double[numFeatures];
 
-            // Interaction force
-            for (int neighborIndex = 0; neighborIndex < k; neighborIndex++) {
-                if (i == neighborIndex)
-                    continue;
-                // Note: neighborIndex in original code was just 0..k loop implies k neighbors?
-                // Actually the original code loop `neighborIndex < k` means it picked first k
-                // atoms.
-                // This is a simplification of K-best neighbors or random K.
-                // Original code: `fitnesses` array is indexed 0..populationSize.
-                // We will use the same logic: interact with first K atoms (assuming they are
-                // sorted? No, original didn't sort).
-                // Just interacting with 0..k indices.
+                // Interaction force
+                for (int neighborIndex = 0; neighborIndex < k; neighborIndex++) {
+                    if (i == neighborIndex)
+                        continue;
+                    // Note: neighborIndex in original code was just 0..k loop implies k neighbors?
+                    // Actually the original code loop `neighborIndex < k` means it picked first k
+                    // atoms.
+                    // This is a simplification of K-best neighbors or random K.
+                    // Original code: `fitnesses` array is indexed 0..populationSize.
+                    // We will use the same logic: interact with first K atoms (assuming they are
+                    // sorted? No, original didn't sort).
+                    // Just interacting with 0..k indices.
+
+                    for (int d = 0; d < numFeatures; d++) {
+                        double r = rand.nextDouble();
+                        force[d] += (fitnesses[i] < fitnesses[neighborIndex] ? 1 : -1) * r * beta
+                                * (currentAtoms[neighborIndex][d] - currentAtoms[i][d]);
+                    }
+                }
+
+                // Constraint force from best atom
+                for (int d = 0; d < numFeatures; d++) {
+                    double r = rand.nextDouble();
+                    force[d] += alpha * r * (bestAtomPosition[d] - currentAtoms[i][d]);
+                }
+
+                double[] newVelocity = new double[numFeatures];
+                double[] newPosition = new double[numFeatures];
+                double[] acceleration = new double[numFeatures];
+
+                if (masses[i] > 1e-9) {
+                    for (int d = 0; d < numFeatures; d++)
+                        acceleration[d] = force[d] / masses[i];
+                }
 
                 for (int d = 0; d < numFeatures; d++) {
                     double r = rand.nextDouble();
-                    force[d] += (fitnesses[i] < fitnesses[neighborIndex] ? 1 : -1) * r * beta
-                            * (currentAtoms[neighborIndex][d] - currentAtoms[i][d]);
+                    newVelocity[d] = r * currentVelocities[i][d] + acceleration[d];
+                    newPosition[d] = currentAtoms[i][d] + newVelocity[d];
                 }
-            }
 
-            // Constraint force from best atom
-            for (int d = 0; d < numFeatures; d++) {
-                double r = rand.nextDouble();
-                force[d] += alpha * r * (bestAtomPosition[d] - currentAtoms[i][d]);
-            }
+                double[] binaryPos = new double[numFeatures];
+                for (int d = 0; d < numFeatures; d++) {
+                    double sigmoid = 1.0 / (1.0 + Math.exp(-newPosition[d]));
+                    binaryPos[d] = rand.nextDouble() < sigmoid ? 1.0 : 0.0;
+                }
 
-            double[] newVelocity = new double[numFeatures];
-            double[] newPosition = new double[numFeatures];
-            double[] acceleration = new double[numFeatures];
-
-            if (masses[i] > 1e-9) {
-                for (int d = 0; d < numFeatures; d++)
-                    acceleration[d] = force[d] / masses[i];
-            }
-
-            for (int d = 0; d < numFeatures; d++) {
-                double r = rand.nextDouble();
-                newVelocity[d] = r * currentVelocities[i][d] + acceleration[d];
-                newPosition[d] = currentAtoms[i][d] + newVelocity[d];
-            }
-
-            double[] binaryPos = new double[numFeatures];
-            for (int d = 0; d < numFeatures; d++) {
-                double sigmoid = 1.0 / (1.0 + Math.exp(-newPosition[d]));
-                binaryPos[d] = rand.nextDouble() < sigmoid ? 1.0 : 0.0;
-            }
-
-            double fit = calculateFitness(binaryPos, classifier, folds);
-            return new FitnessResult(i, fit, newPosition, newVelocity, binaryPos);
-        }).toList();
+                double fit = calculateFitness(binaryPos, classifier, folds);
+                return new FitnessResult(i, fit, newPosition, newVelocity, binaryPos);
+            }).toList()).get();
+        } catch (Exception e) {
+            e.printStackTrace();
+            results = java.util.Collections.emptyList();
+        } finally {
+            customThreadPool.shutdown();
+        }
 
         // Update global state
         for (FitnessResult res : results) {
@@ -167,7 +194,8 @@ public class AtomSearchOptimization extends AbstractFeatureSelectionAlgorithm {
                 bestAtomPosition = res.binaryPos;
             }
         }
-        System.out.println("Iteration " + (iteration + 1) + " | Best Fitness: " + this.bestFitness);
+        com.example.automl_prototype_1.service.LogService.info("ASO",
+                "Iteration " + (iteration + 1) + " | Best Fitness: " + this.bestFitness);
     }
 
     private record FitnessResult(int i, double fitness, double[] position, double[] velocity, double[] binaryPos) {

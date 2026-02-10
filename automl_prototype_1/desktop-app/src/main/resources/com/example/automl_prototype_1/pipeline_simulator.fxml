@@ -114,11 +114,22 @@
                         </VBox>
                     </TitledPane>
 
-                    <!-- STEP 5: Performance Estimation -->
-                    <TitledPane text="Step 5: Performance &amp; Cost Estimation (New)">
+                    <!-- STEP 5: Validation & Execution -->
+                    <TitledPane text="Step 5: Pipeline Validation &amp; Execution (Advanced)">
                         <VBox spacing="10">
-                             <Button text="Calculate Estimate" onAction="#handleCalculateEstimation" styleClass="button-accent"/>
-                             <TextArea fx:id="estimationOutput" editable="false" prefHeight="100" style="-fx-font-family: 'Consolas';"/>
+                             <HBox spacing="10" alignment="CENTER_LEFT">
+                                <Button text="Validate Pipeline" onAction="#handleCalculateEstimation" styleClass="button-accent"/>
+                                <Label fx:id="validationStatusLabel" text="Status: Unknown" style="-fx-font-weight: bold;"/>
+                             </HBox>
+                             
+                             <Label text="Validation Details:" styleClass="sub-header-label"/>
+                             <TextArea fx:id="validationDetailsArea" editable="false" prefHeight="80" wrapText="true"/>
+                             
+                             <Label text="Performance Estimation:" styleClass="sub-header-label"/>
+                             <TextArea fx:id="estimationOutput" editable="false" prefHeight="60" style="-fx-font-family: 'Consolas';"/>
+                             
+                             <Button fx:id="runPipelineBtn" text="Run This Pipeline Configuration" onAction="#handleRunCustomPipeline" 
+                                     disable="true" style="-fx-base: #2ecc71; -fx-text-fill: white; -fx-font-weight: bold;"/>
                         </VBox>
                     </TitledPane>
                 </panes>

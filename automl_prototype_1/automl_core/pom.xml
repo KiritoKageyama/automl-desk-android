@@ -64,6 +64,33 @@
             <artifactId>aparapi</artifactId>
             <version>3.0.0</version>
         </dependency>
+
+        <!-- Phase 6 Step 4: Apache Arrow for Zero-Copy Data Transfer -->
+        <dependency>
+            <groupId>org.apache.arrow</groupId>
+            <artifactId>arrow-vector</artifactId>
+            <version>15.0.0</version>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.arrow</groupId>
+            <artifactId>arrow-memory-netty</artifactId>
+            <version>15.0.0</version>
+        </dependency>
+
+        <!-- Phase 6 Step 5: ONNX Runtime for High-Performance Inference -->
+        <dependency>
+            <groupId>com.microsoft.onnxruntime</groupId>
+            <artifactId>onnxruntime</artifactId>
+            <version>1.17.1</version>
+        </dependency>
+        <!-- GPU version removed to avoid split-package conflict with standard onnxruntime.
+             The Java client uses CPU for inference (fast enough).
+             Heavy training is handled by the Python GPU server. -->
+        <!-- <dependency>
+            <groupId>com.microsoft.onnxruntime</groupId>
+            <artifactId>onnxruntime_gpu</artifactId>
+            <version>1.17.1</version>
+        </dependency> -->
     </dependencies>
 
 </project>

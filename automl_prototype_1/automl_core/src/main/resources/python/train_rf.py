@@ -15,6 +15,8 @@ parser.add_argument('--n_estimators', type=int, default=100)
 parser.add_argument('--max_depth', type=int, default=10)
 args = parser.parse_args()
 
+print(f"DEBUG: train_rf.py started for data: {args.data}", flush=True)
+
 def train():
     try:
         print(f"Loading data from {args.data}")

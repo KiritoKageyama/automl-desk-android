@@ -130,6 +130,8 @@
 
 .button-accent:hover {
     -fx-background-color: derive(-color-primary, 10%);
+    background-color: #6a4cff;
+    /* Approximate for compatibility */
     -fx-effect: dropshadow(gaussian, rgba(94, 59, 255, 0.5), 15, 0, 0, 4);
 }
 
@@ -147,15 +149,19 @@
 
 .nav-button:hover {
     -fx-background-color: rgba(94, 59, 255, 0.05);
+    background-color: rgba(94, 59, 255, 0.05);
     -fx-text-fill: -color-primary;
 }
 
 .nav-button:focused,
 .nav-button:selected {
     -fx-background-color: rgba(94, 59, 255, 0.1);
+    background-color: rgba(94, 59, 255, 0.1);
     -fx-text-fill: -color-primary;
     -fx-border-color: -color-primary;
+    border-color: #5E3BFF;
     -fx-border-width: 0 0 0 4;
+    border-width: 0 0 0 4px;
     -fx-border-radius: 0;
     border-radius: 0;
 }
@@ -169,6 +175,7 @@
     -fx-text-fill: -color-text-primary;
     -fx-background-radius: 8;
     -fx-border-color: rgba(255, 255, 255, 0.1);
+    border-color: rgba(255, 255, 255, 0.1);
     -fx-border-radius: 8;
     border-radius: 8px;
 }
@@ -176,6 +183,7 @@
 .text-field:focused,
 .text-area:focused {
     -fx-border-color: -color-primary;
+    border-color: #5E3BFF;
     -fx-effect: dropshadow(gaussian, rgba(94, 59, 255, 0.1), 5, 0, 0, 0);
 }
 

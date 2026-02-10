@@ -5,6 +5,7 @@ import com.example.automl_prototype_1.service.AppStateService;
 import com.example.automl_prototype_1.dataprovider.CsvDataProvider;
 import com.example.automl_prototype_1.model.AttributeSummary;
 import com.example.automl_prototype_1.service.RecommendationService;
+import com.example.automl_prototype_1.experiment.SyntheticDataGenerator;
 import javafx.collections.FXCollections;
 import javafx.fxml.FXML;
 import javafx.scene.control.Alert;
@@ -94,6 +95,71 @@ public class UploadViewController {
         }
 
         analysisTextArea.setText(report.toString());
+        analysisTextArea.setText(report.toString());
+    }
+
+    @FXML
+    private void handleAdvancedSettings() {
+        // Create a custom dialog for preprocessing settings
+        javafx.scene.control.Dialog<com.example.automl_prototype_1.model.PreprocessingConfig> dialog = new javafx.scene.control.Dialog<>();
+        dialog.setTitle("Advanced Preprocessing Settings");
+        dialog.setHeaderText("Configure Data Cleaning & Scaling");
+
+        // Set the button types
+        javafx.scene.control.ButtonType saveButtonType = new javafx.scene.control.ButtonType("Save",
+                javafx.scene.control.ButtonBar.ButtonData.OK_DONE);
+        dialog.getDialogPane().getButtonTypes().addAll(saveButtonType, javafx.scene.control.ButtonType.CANCEL);
+
+        // Create the layout
+        javafx.scene.layout.GridPane grid = new javafx.scene.layout.GridPane();
+        grid.setHgap(10);
+        grid.setVgap(10);
+        grid.setPadding(new javafx.geometry.Insets(20, 150, 10, 10));
+
+        // Get current config
+        com.example.automl_prototype_1.model.PreprocessingConfig currentConfig = appStateService
+                .getPreprocessingConfig();
+
+        // Add controls
+        javafx.scene.control.CheckBox removeIds = new javafx.scene.control.CheckBox("Auto-remove ID Columns");
+        removeIds.setSelected(currentConfig.isAutoRemoveIdColumns());
+
+        javafx.scene.control.CheckBox impute = new javafx.scene.control.CheckBox("Impute Missing Values (Mean/Mode)");
+        impute.setSelected(currentConfig.isImputeMissingValues());
+
+        javafx.scene.control.CheckBox outliers = new javafx.scene.control.CheckBox("Remove Outliers (IQR Method)");
+        outliers.setSelected(currentConfig.isRemoveOutliers());
+
+        javafx.scene.control.ChoiceBox<String> scaling = new javafx.scene.control.ChoiceBox<>();
+        scaling.getItems().addAll("Standardization", "Normalization", "None");
+        scaling.setValue(currentConfig.getScalingStrategy());
+
+        grid.add(new javafx.scene.control.Label("Scaling Strategy:"), 0, 0);
+        grid.add(scaling, 1, 0);
+        grid.add(removeIds, 0, 1);
+        grid.add(impute, 0, 2);
+        grid.add(outliers, 0, 3);
+
+        dialog.getDialogPane().setContent(grid);
+
+        // Convert the result to a config object when the login button is clicked.
+        dialog.setResultConverter(dialogButton -> {
+            if (dialogButton == saveButtonType) {
+                return new com.example.automl_prototype_1.model.PreprocessingConfig(
+                        removeIds.isSelected(),
+                        impute.isSelected(),
+                        outliers.isSelected(),
+                        scaling.getValue());
+            }
+            return null;
+        });
+
+        java.util.Optional<com.example.automl_prototype_1.model.PreprocessingConfig> result = dialog.showAndWait();
+
+        result.ifPresent(newConfig -> {
+            appStateService.setPreprocessingConfig(newConfig);
+            analysisTextArea.setText(analysisTextArea.getText() + "\n\n[Settings Updated]: " + newConfig.toString());
+        });
     }
 
     private void handleBrowse() {
@@ -111,8 +177,9 @@ public class UploadViewController {
                 Dataset tempDataset = new CsvDataProvider().loadDataset(reader);
                 appStateService.setDatasetHeaders(tempDataset.getHeaders()); // Store headers in state
             } catch (Exception e) {
-                e.printStackTrace();
-                appStateService.setDatasetHeaders(null);
+                AppStateService.getInstance().setDatasetHeaders(null);
+                com.example.automl_prototype_1.service.LogService.error("UploadView",
+                        "Failed to load dataset: " + e.getMessage());
                 showError("Failed to load dataset: " + e.getMessage());
             }
         }
@@ -154,6 +221,43 @@ public class UploadViewController {
             analyzeButton.setDisable(true);
             targetColumnChoiceBox.getItems().clear();
             targetColumnChoiceBox.setDisable(true);
+        }
+    }
+
+    @FXML
+    private void handleGenerateSynthetic() {
+        try {
+            // Generate synthetic dataset: 500 samples, 20 features, 10 informative
+            Dataset syntheticDataset = SyntheticDataGenerator.generate(500, 20, 10, false);
+
+            // Store in app state
+            appStateService.setCurrentDataset(syntheticDataset);
+            appStateService.setDatasetHeaders(syntheticDataset.getHeaders());
+            appStateService.setTargetColumnName("Class");
+
+            // Update UI
+            selectedFileLabel.setText("Synthetic Dataset (500 x 20)");
+            selectedFileLabel.setStyle("-fx-text-fill: #4CAF50;");
+
+            targetColumnChoiceBox.setItems(FXCollections.observableArrayList(syntheticDataset.getHeaders()));
+            targetColumnChoiceBox.setValue("Class");
+            targetColumnChoiceBox.setDisable(false);
+            analyzeButton.setDisable(false);
+
+            analysisTextArea.setText("✅ Synthetic Dataset Generated Successfully!\n\n" +
+                    "Samples: 500\n" +
+                    "Features: 20 (10 informative, 10 noise)\n" +
+                    "Target: Class (binary: 0 or 1)\n\n" +
+                    "This dataset is ideal for testing the pipeline quickly.\n" +
+                    "You can proceed to Algorithm Selection.");
+
+            com.example.automl_prototype_1.service.LogService.info("UploadView",
+                    "Generated synthetic dataset: 500 samples, 20 features");
+
+        } catch (Exception e) {
+            showError("Failed to generate synthetic data: " + e.getMessage());
+            com.example.automl_prototype_1.service.LogService.error("UploadView",
+                    "Synthetic generation failed: " + e.getMessage());
         }
     }
 

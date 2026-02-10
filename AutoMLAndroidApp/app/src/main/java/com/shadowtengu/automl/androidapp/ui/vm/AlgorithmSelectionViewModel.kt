@@ -71,7 +71,7 @@ class AlgorithmSelectionViewModel : ViewModel() {
 
     // --- Core Services ---
     private val appStateService = AppStateService.getInstance()
-    private val executionService = ExecutionService()
+    private val executionService = ExecutionService.getInstance()
     private val preprocessorService = PreprocessorService()
     private val csvDataProvider = CsvDataProvider()
 

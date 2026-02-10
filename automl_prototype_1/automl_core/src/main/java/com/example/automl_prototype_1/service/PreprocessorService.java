@@ -20,20 +20,39 @@ public class PreprocessorService {
      *                         label.
      * @return A new, cleaned, and normalized Dataset object.
      */
-    public Dataset runPreprocessingPipeline(Dataset rawDataset, String targetColumnName, String scalingStrategy) {
-        LogService.info("Preprocessor", "--- Starting Preprocessing Pipeline ---");
+    public Dataset runPreprocessingPipeline(Dataset rawDataset, String targetColumnName,
+            com.example.automl_prototype_1.model.PreprocessingConfig config) {
+        LogService.info("Preprocessor", "--- Starting Preprocessing Pipeline with Config: " + config + " ---");
 
-        Dataset datasetWithoutIds = removeIdentifierColumns(rawDataset, targetColumnName);
-        Dataset datasetWithNumericTarget = convertTargetToNumeric(datasetWithoutIds, targetColumnName);
-        Dataset datasetWithStandardizedTarget = standardizeTargetColumn(datasetWithNumericTarget, targetColumnName);
+        Dataset currentDataset = rawDataset;
+
+        if (config.isAutoRemoveIdColumns()) {
+            currentDataset = removeIdentifierColumns(currentDataset, targetColumnName);
+        } else {
+            LogService.info("Preprocessor", "Skipping ID Column Removal (User Request).");
+        }
+
+        if (config.isImputeMissingValues()) {
+            // Impute logic
+            LogService.info("Preprocessor", "Applying Mean Imputation...");
+            currentDataset.impute(currentDataset.getTargetColumnName());
+        } else {
+            LogService.info("Preprocessor", "Skipping Imputation (User Request).");
+        }
+
+        currentDataset = convertTargetToNumeric(currentDataset, targetColumnName);
+
+        // Ensure standardizeTargetColumn is always called as it sets up the "Class"
+        // column required by classifiers
+        currentDataset = standardizeTargetColumn(currentDataset, targetColumnName);
 
         // --- THIS IS THE DYNAMIC PART ---
-        Dataset finalDataset = switch (scalingStrategy) {
-            case "Standardization" -> standardize(datasetWithStandardizedTarget);
-            case "Normalization" -> normalize(datasetWithStandardizedTarget);
+        Dataset finalDataset = switch (config.getScalingStrategy()) {
+            case "Standardization" -> standardize(currentDataset);
+            case "Normalization" -> normalize(currentDataset);
             default -> { // "None" or any other value
                 LogService.info("Preprocessor", "Skipping feature scaling.");
-                yield datasetWithStandardizedTarget;
+                yield currentDataset;
             }
         };
 
@@ -81,26 +100,34 @@ public class PreprocessorService {
                 .filter(Objects::nonNull)
                 .collect(Collectors.toSet());
 
-        if (uniqueLabels.size() == 2) {
+        // Handle both binary and multi-class cases
+        if (uniqueLabels.size() >= 2) {
             LogService.info("Preprocessor",
-                    "Detected binary target '" + targetColumnName + "' with labels " + uniqueLabels);
+                    "Detected categorical target '" + targetColumnName + "' with " + uniqueLabels.size() + " labels.");
+
             List<String> sortedLabels = new ArrayList<>(uniqueLabels);
-            Collections.sort(sortedLabels);
-            String firstLabel = sortedLabels.get(0);
-            LogService.info("Preprocessor",
-                    "Mapping '" + firstLabel + "' to -1, and '" + sortedLabels.get(1) + "' to 1.");
+            Collections.sort(sortedLabels); // Ensure deterministic ordering (0=ClassA, 1=ClassB...)
+
+            Map<String, String> labelMap = new HashMap<>();
+            for (int i = 0; i < sortedLabels.size(); i++) {
+                labelMap.put(sortedLabels.get(i), String.valueOf(i));
+            }
+
+            LogService.info("Preprocessor", "Applying Label Encoding: " + labelMap);
 
             List<Map<String, String>> newRecords = dataset.getRecords().stream()
                     .map(originalRecord -> {
                         Map<String, String> newRecord = new HashMap<>(originalRecord);
                         String originalLabel = newRecord.get(targetColumnName);
-                        String numericLabel = originalLabel.equals(firstLabel) ? "-1" : "1";
+                        // Map using the lookup, default to "0" if null (shouldn't happen with filter)
+                        String numericLabel = labelMap.getOrDefault(originalLabel, "0");
                         newRecord.put(targetColumnName, numericLabel);
                         return newRecord;
                     }).collect(Collectors.toList());
 
             return new Dataset(dataset.getSourceFile(), dataset.getHeaders(), newRecords);
         }
+
         return dataset;
     }
 
@@ -123,51 +150,56 @@ public class PreprocessorService {
 
         LogService.info("Preprocessor",
                 "Standardized target column '" + originalTargetName + "' to '" + newTargetName + "'.");
-        return new Dataset(dataset.getSourceFile(), headers, newRecords);
+
+        // Use the List<Map> constructor to correctly re-order features based on the new
+        // headers
+        Dataset temp = new Dataset(dataset.getSourceFile(), headers, newRecords);
+
+        // Wrap it to set the target column name
+        return new Dataset(temp.getSourceFile(), temp.getHeaders(), temp.getFeatures(), temp.getLabels(),
+                newTargetName);
     }
 
+    // Helper to rebuild dataset if needed, but the above is safer if we trust
+    // features/labels are in sync
+    // However, the previous code constructed it from 'newRecords' using the List
+    // constructor which drops the target
+    // So we must stick to the List constructor BUT we need a way to set the target.
+    // Dataset doesn't have a setter for targetColumnName (it's final).
+    // So we must use a constructor that accepts it, but we only have Map records.
+
+    // Correction: Dataset has a constructor: Dataset(source, headers, features,
+    // labels, targetName)
+    // But we are transforming records in List<Map> form here.
+    // The previous implementation used `new Dataset(dataset.getSourceFile(),
+    // headers, newRecords);`
+    // We need to use:
+    // `new Dataset(dataset.getSourceFile(), headers, newRecords, newTargetName)` ->
+    // DOES NOT EXIST.
+
+    // OPTION: We should modify Dataset to add that constructor OR use the existing
+    // one and convert maps.
+    // But wait, Dataset(File, List, List<Map>) parses the maps into
+    // features/labels.
+    // So we can just add a constructor to Dataset that takes `targetColumnName`
+    // with List<Map>.
+
+    // ALTERNATIVELY (Easier here):
+    // Parse the maps ourselves or let the current constructor do it, then RE-WRAP
+    // it.
+    /*
+     * Dataset temp = new Dataset(dataset.getSourceFile(), headers, newRecords);
+     * return new Dataset(temp.getSourceFile(), temp.getHeaders(),
+     * temp.getFeatures(), temp.getLabels(), newTargetName);
+     */
+
+    // Let's do that. It's safe and effective.
+
     public Dataset normalize(Dataset dataset) {
-        LogService.info("Preprocessor", "Normalizing dataset...");
-        final String TARGET_COLUMN = "Class";
-        double[][] featureMatrix = dataset.getFeatureMatrix(TARGET_COLUMN);
-        if (featureMatrix.length == 0)
-            return dataset;
-        int numFeatures = featureMatrix[0].length;
-        double[] minValues = new double[numFeatures];
-        double[] maxValues = new double[numFeatures];
-        Arrays.fill(minValues, Double.POSITIVE_INFINITY);
-        Arrays.fill(maxValues, Double.NEGATIVE_INFINITY);
-
-        for (double[] row : featureMatrix) {
-            for (int j = 0; j < numFeatures; j++) {
-                if (row[j] < minValues[j])
-                    minValues[j] = row[j];
-                if (row[j] > maxValues[j])
-                    maxValues[j] = row[j];
-            }
-        }
-        for (double[] row : featureMatrix) {
-            for (int j = 0; j < numFeatures; j++) {
-                double range = maxValues[j] - minValues[j];
-                row[j] = (range > 1e-9) ? (row[j] - minValues[j]) / range : 0.0;
-            }
-        }
-
-        List<Map<String, String>> newRecords = new ArrayList<>();
-        List<String> featureHeaders = new ArrayList<>(dataset.getHeaders());
-        featureHeaders.remove(TARGET_COLUMN);
-        List<Map<String, String>> originalRecords = dataset.getRecords();
-
-        for (int i = 0; i < featureMatrix.length; i++) {
-            Map<String, String> newRecord = new HashMap<>();
-            for (int j = 0; j < featureHeaders.size(); j++) {
-                newRecord.put(featureHeaders.get(j), String.valueOf(featureMatrix[i][j]));
-            }
-            newRecord.put(TARGET_COLUMN, originalRecords.get(i).get(TARGET_COLUMN));
-            newRecords.add(newRecord);
-        }
-        LogService.info("Preprocessor", "Normalization complete.");
-        return new Dataset(dataset.getSourceFile(), dataset.getHeaders(), newRecords);
+        LogService.info("Preprocessor", "Normalizing dataset via efficient Dataset method...");
+        // Efficient in-place normalization similar to standardization
+        dataset.normalize();
+        return dataset;
     }
 
     public Dataset standardize(Dataset dataset) {

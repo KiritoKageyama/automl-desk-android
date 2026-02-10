@@ -24,7 +24,7 @@
         <dependency>
             <groupId>com.shadowtengu</groupId> <!-- Use parent/core groupId -->
             <artifactId>automl_core</artifactId>
-            <!-- Version is inherited from parent's dependencyManagement -->
+            <version>${project.version}</version>
         </dependency>
 
         <!-- *** JavaFX Dependencies *** -->
@@ -45,8 +45,7 @@
         <dependency> <groupId>org.kordamp.bootstrapfx</groupId> <artifactId>bootstrapfx-core</artifactId> <exclusions> <exclusion> <groupId>org.openjfx</groupId> <artifactId>*</artifactId> </exclusion> </exclusions> </dependency>
         <dependency> <groupId>eu.hansolo</groupId> <artifactId>tilesfx</artifactId> <exclusions> <exclusion> <groupId>org.openjfx</groupId> <artifactId>*</artifactId> </exclusion> </exclusions> </dependency>
         <dependency> <groupId>com.github.almasb</groupId> <artifactId>fxgl</artifactId> <exclusions> <exclusion> <groupId>org.openjfx</groupId> <artifactId>*</artifactId> </exclusion> </exclusions> </dependency>
-        <dependency> <groupId>eu.hansolo.fx</groupId> <artifactId>countries</artifactId> <exclusions> <exclusion> <groupId>org.openjfx</groupId> <artifactId>*</artifactId> </exclusion> </exclusions> </dependency>
-        <dependency> <groupId>eu.hansolo.fx</groupId> <artifactId>heatmap</artifactId> <exclusions> <exclusion> <groupId>org.openjfx</groupId> <artifactId>*</artifactId> </exclusion> </exclusions> </dependency>
+
         <dependency> <groupId>eu.hansolo</groupId> <artifactId>toolboxfx</artifactId> <exclusions> <exclusion> <groupId>org.openjfx</groupId> <artifactId>*</artifactId> </exclusion> </exclusions> </dependency>
         <dependency> <groupId>eu.hansolo</groupId> <artifactId>toolbox</artifactId> <exclusions> <exclusion> <groupId>org.openjfx</groupId> <artifactId>*</artifactId> </exclusion> </exclusions> </dependency>
 
@@ -103,7 +102,7 @@
                         <id>default-cli</id>
                         <configuration>
                             <!-- IMPORTANT: Verify this path matches the location AFTER moving -->
-                            <mainClass>com.example.automl_prototype_1/com.example.automl_prototype_1.DashboardApplication</mainClass>
+                            <mainClass>com.example.automl_prototype_1.DashboardApplication</mainClass>
                             <launcher>app</launcher>
                             <jlinkZipName>app</jlinkZipName>
                             <jlinkImageName>app</jlinkImageName>
@@ -113,9 +112,11 @@
                             <options>
                                 <option>-Xmx4g</option>
                                 <option>--add-opens</option>
-                                <option>java.base/java.lang=com.example.automl_prototype_1</option>
+                                <option>java.base/java.lang=ALL-UNNAMED</option>
                                 <option>--add-opens</option>
-                                <option>java.base/java.util=com.example.automl_prototype_1</option>
+                                <option>java.base/java.util=ALL-UNNAMED</option>
+                                <option>--add-opens</option>
+                                <option>java.base/java.nio=ALL-UNNAMED</option>
                             </options>
                         </configuration>
                     </execution>

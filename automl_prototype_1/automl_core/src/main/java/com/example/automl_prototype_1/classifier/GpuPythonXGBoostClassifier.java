@@ -1,28 +1,27 @@
 package com.example.automl_prototype_1.classifier;
 
 import com.example.automl_prototype_1.service.IClassifier;
+import com.example.automl_prototype_1.service.IGpuCachedClassifier;
 import com.example.automl_prototype_1.service.PythonExecutionService;
 import com.example.automl_prototype_1.service.LogService;
-import java.io.File;
-import java.io.BufferedWriter;
-import java.io.FileWriter;
-import java.io.IOException;
-import java.util.UUID;
-import java.util.Scanner;
 
 /**
  * A Python-bridged implementation of XGBoost.
  * This version supports true GPU acceleration via 'gpu_hist' in the Python
  * XGBoost library.
  */
-public class GpuPythonXGBoostClassifier implements IClassifier {
+public class GpuPythonXGBoostClassifier implements IClassifier, IGpuCachedClassifier {
 
     private final int nEstimators;
     private final int maxDepth;
-    private File pythonModelPath;
+    private final ThreadLocal<String> pythonModelId = new ThreadLocal<>();
+    private final ThreadLocal<String> onnxModelPath = new ThreadLocal<>();
+
+    private final com.example.automl_prototype_1.service.agentic.IInferenceEngine pythonEngine = new com.example.automl_prototype_1.service.agentic.PythonInferenceEngine();
+    private final com.example.automl_prototype_1.service.agentic.IInferenceEngine onnxEngine = new com.example.automl_prototype_1.service.agentic.OnnxInferenceEngine();
 
     public GpuPythonXGBoostClassifier() {
-        this.nEstimators = 100;
+        this.nEstimators = 50;
         this.maxDepth = 6;
     }
 
@@ -33,7 +32,7 @@ public class GpuPythonXGBoostClassifier implements IClassifier {
 
     @Override
     public String getName() {
-        return "XGBoost (Python/GPU Bridge)";
+        return "XGBoost (Hybrid Python/ONNX/GPU)";
     }
 
     @Override
@@ -43,102 +42,176 @@ public class GpuPythonXGBoostClassifier implements IClassifier {
 
         if (PythonExecutionService.getInstance().isAvailable()) {
             try {
-                LogService.info("GpuPyXGB", "Preparing Python Bridge training...");
-                File trainFile = createTempCsv(features, labels);
-                File modelFile = File.createTempFile("xgb_model_" + UUID.randomUUID(), ".pkl");
-
-                // Extract script from resources (works in JAR and IDE)
-                File scriptFile = PythonExecutionService.getInstance().extractScriptToTemp("train_xgb.py");
-
-                boolean success = PythonExecutionService.getInstance().trainModel(
-                        scriptFile,
-                        trainFile,
-                        modelFile,
-                        "--n_estimators", String.valueOf(nEstimators),
-                        "--max_depth", String.valueOf(maxDepth));
-
-                // Clean up script file
-                // scriptFile.delete(); // allow util to handle cleanup or let it persist for
-                // debug for now
-
-                if (success) {
-                    this.pythonModelPath = modelFile;
-                    LogService.info("GpuPyXGB", "Training successful. Model saved.");
+                if (!PythonExecutionService.getInstance().isServerRunning()) {
+                    PythonExecutionService.getInstance().startGpuServer();
                 }
 
-                trainFile.delete();
-            } catch (Exception e) {
-                LogService.error("GpuPyXGB", "Training failed: " + e.getMessage());
-            }
-        } else
+                // Detect number of classes
+                int numClasses = java.util.Arrays.stream(labels).max().orElse(0) + 1;
 
-        {
-            LogService.error("GpuPyXGB", "Python not available. Cannot train.");
+                java.util.Map<String, Object> params = new java.util.HashMap<>();
+                params.put("n_estimators", nEstimators);
+                params.put("max_depth", maxDepth);
+                params.put("learning_rate", 0.1);
+                params.put("min_child_weight", 1);
+                params.put("subsample", 0.8);
+                params.put("colsample_bytree", 0.8);
+
+                if (numClasses > 2) {
+                    params.put("objective", "multi:softmax");
+                    params.put("num_class", numClasses);
+                    params.put("eval_metric", "mlogloss");
+                    LogService.info("GpuPyXGB",
+                            "Multi-class detected (" + numClasses + " classes). Switched to 'multi:softmax'.");
+                } else {
+                    params.put("objective", "binary:logistic");
+                    params.put("eval_metric", "logloss");
+                }
+
+                try {
+                    trainInternal(features, labels, params, 0);
+                } catch (Exception e) {
+                    throw new RuntimeException("GPU Training Failed after retries: " + e.getMessage(), e);
+                }
+            } catch (Exception e) {
+                String msg = "CRITICAL: GPU XGBoost Training Failed. " + e.getMessage();
+                LogService.error("GpuPyXGB", msg);
+                throw new RuntimeException(msg + " Please switch to CPU version.");
+            }
+        } else {
+            String msg = "CRITICAL: GPU/Python Bridge unavailable but GPU classifier selected.";
+            LogService.error("GpuPyXGB", msg);
+            throw new RuntimeException(msg + " Please enable GPU in settings or switch to standard XGBoost.");
+        }
+    }
+
+    private void trainInternal(double[][] features, int[] labels, java.util.Map<String, Object> params, int attempt)
+            throws Exception {
+        try {
+            java.util.concurrent.CompletableFuture<Object> future = com.example.automl_prototype_1.service.GpuBatchService
+                    .getInstance()
+                    .submitTrain("XGB", features, labels, params);
+
+            Object result = future.get();
+            if (result instanceof String) {
+                String rawStr = (String) result;
+                if (rawStr.contains("|")) {
+                    String[] parts = rawStr.split("\\|");
+                    this.pythonModelId.set(parts[0]);
+                    this.onnxModelPath.set(parts[1]);
+                    LogService.info("GpuPyXGB", "Training Success. ONNX Enabled: " + parts[1]);
+                } else {
+                    this.pythonModelId.set(rawStr);
+                    this.onnxModelPath.remove();
+                }
+            }
+        } catch (java.util.concurrent.ExecutionException ee) {
+            if (attempt < 5 && (ee.getCause() instanceof java.net.ConnectException
+                    || ee.getCause() instanceof java.io.IOException)) {
+                LogService.info("GpuPyXGB", "[WARNING] Connection issue. Retrying (Attempt " + (attempt + 1) + ")...");
+                Thread.sleep(2000);
+                trainInternal(features, labels, params, attempt + 1);
+            } else {
+                throw ee;
+            }
         }
     }
 
     @Override
     public int[] predict(double[][] features) {
-        if (this.pythonModelPath != null && PythonExecutionService.getInstance().isAvailable()) {
+        String onnxPath = this.onnxModelPath.get();
+        if (onnxPath != null) {
             try {
-                File inputFile = createTempCsv(features, null);
-                File outputFile = File.createTempFile("preds_xgb_" + UUID.randomUUID(), ".csv");
-
-                File scriptFile = PythonExecutionService.getInstance().extractScriptToTemp("predict.py");
-
-                boolean success = PythonExecutionService.getInstance().predict(
-                        scriptFile,
-                        this.pythonModelPath,
-                        inputFile,
-                        outputFile);
-
-                if (success) {
-                    return readPredictions(outputFile);
-                }
+                return onnxEngine.predict(onnxPath, features).get();
             } catch (Exception e) {
-                LogService.error("GpuPyXGB", "Prediction failed: " + e.getMessage());
+                LogService.warn("GpuPyXGB", "ONNX Inference failed (" + e.getMessage() + "). Fallback to Python.");
             }
         }
-        return new int[features.length];
+
+        String modelId = this.pythonModelId.get();
+        if (modelId != null && PythonExecutionService.getInstance().isAvailable()) {
+            try {
+                return pythonEngine.predict(modelId, features).get();
+            } catch (Exception e) {
+                String msg = "CRITICAL: GPU XGBoost Prediction Failed. " + e.getMessage();
+                LogService.error("GpuPyXGB", msg);
+                throw new RuntimeException(msg);
+            }
+        } else {
+            throw new RuntimeException("CRITICAL: XGBoost Model not trained or GPU unavailable.");
+        }
     }
 
-    // Helper (Duplicate logic, ideally moved to util)
-    private File createTempCsv(double[][] features, int[] labels) throws IOException {
-        File temp = File.createTempFile("data_" + UUID.randomUUID(), ".csv");
-        try (BufferedWriter writer = new BufferedWriter(new FileWriter(temp))) {
-            // Header
-            for (int i = 0; i < features[0].length; i++)
-                writer.write("F" + i + ",");
-            writer.write("Class");
-            writer.newLine();
-            for (int i = 0; i < features.length; i++) {
-                for (int j = 0; j < features[i].length; j++)
-                    writer.write(features[i][j] + ",");
-                if (labels != null)
-                    writer.write(String.valueOf(labels[i]));
-                else
-                    writer.write("0");
-                writer.newLine();
+    @Override
+    public void trainCached(String datasetId, int[] featureIndices, int[] rowIndices) {
+        try {
+            String rawStr = submitTrainCachedAsync(datasetId, featureIndices, rowIndices).get();
+            if (rawStr.contains("|")) {
+                String[] parts = rawStr.split("\\|");
+                this.pythonModelId.set(parts[0]);
+                this.onnxModelPath.set(parts[1]);
+            } else {
+                this.pythonModelId.set(rawStr);
+                this.onnxModelPath.remove();
+            }
+        } catch (Exception e) {
+            throw new RuntimeException("GPU XGB Cached Training Failed", e);
+        }
+    }
+
+    @Override
+    public int[] predictCached(String datasetId, int[] featureIndices, int[] rowIndices) {
+        String modelId = this.pythonModelId.get();
+        if (modelId != null) {
+            try {
+                return submitPredictCachedAsync(modelId, datasetId, featureIndices, rowIndices).get();
+            } catch (Exception e) {
+                throw new RuntimeException("GPU XGB Cached Prediction Failed", e);
             }
         }
-        return temp;
+        return new int[0];
     }
 
-    private int[] readPredictions(File csvFile) throws IOException {
-        try (Scanner scanner = new Scanner(csvFile)) {
-            if (!scanner.hasNext())
-                return new int[0];
-            String content = scanner.useDelimiter("\\A").next();
-            String[] tokens = content.trim().split("[,\\s]+");
-            int[] preds = new int[tokens.length];
-            for (int i = 0; i < tokens.length; i++) {
-                try {
-                    preds[i] = (int) Double.parseDouble(tokens[i]);
-                } catch (Exception e) {
-                    preds[i] = 0;
-                }
+    @Override
+    public java.util.concurrent.CompletableFuture<String> submitTrainCachedAsync(String datasetId, int[] featureIndices,
+            int[] rowIndices) {
+        if (PythonExecutionService.getInstance().isAvailable()) {
+            java.util.Map<String, Object> params = new java.util.HashMap<>();
+            params.put("n_estimators", nEstimators);
+            params.put("max_depth", maxDepth);
+            // Add other optimization params if needed
+            params.put("learning_rate", 0.1);
+            params.put("min_child_weight", 1);
+            params.put("subsample", 0.8);
+            params.put("colsample_bytree", 0.8);
+
+            return com.example.automl_prototype_1.service.GpuBatchService.getInstance()
+                    .submitTrainCached("XGB", datasetId, featureIndices, rowIndices, params)
+                    .thenApply(res -> (String) res);
+        } else {
+            java.util.concurrent.CompletableFuture<String> f = new java.util.concurrent.CompletableFuture<>();
+            f.completeExceptionally(new RuntimeException("Python Bridge unavailable"));
+            return f;
+        }
+    }
+
+    @Override
+    public java.util.concurrent.CompletableFuture<int[]> submitPredictCachedAsync(String modelId, String datasetId,
+            int[] featureIndices, int[] rowIndices) {
+        return com.example.automl_prototype_1.service.GpuBatchService.getInstance()
+                .submitPredictCached(modelId, datasetId, featureIndices, rowIndices)
+                .thenApply(res -> (int[]) res);
+    }
+
+    public void cleanup() {
+        String modelId = this.pythonModelId.get();
+        if (modelId != null) {
+            try {
+                com.example.automl_prototype_1.service.GpuBatchService.getInstance().submitCleanup(modelId);
+                this.pythonModelId.remove();
+            } catch (Exception e) {
+                LogService.error("GpuPyXGB", "Cleanup failed for " + modelId);
             }
-            return preds;
         }
     }
 }

@@ -6,48 +6,117 @@
 <?import javafx.scene.layout.HBox?>
 <?import javafx.scene.layout.VBox?>
 <?import javafx.scene.control.Separator?>
+<?import javafx.scene.control.CheckBox?>
+<?import javafx.scene.control.ScrollPane?>
 
-<VBox xmlns:fx="http://javafx.com/fxml/1" spacing="20" style="-fx-padding: 20;"
-      fx:controller="com.example.automl_prototype_1.controller.SettingsViewController">
+<ScrollPane xmlns:fx="http://javafx.com/fxml/1" fitToWidth="true" style="-fx-background-color: transparent;"
+            fx:controller="com.example.automl_prototype_1.controller.SettingsViewController">
+    <VBox spacing="20" style="-fx-padding: 20;">
 
-    <Label styleClass="header-label" text="Settings"/>
+        <Label styleClass="header-label" text="Settings"/>
 
-    <!-- Card for Theme Settings -->
-    <VBox spacing="10" styleClass="card" alignment="TOP_LEFT">
-        <padding>
-            <Insets bottom="20.0" left="30.0" right="30.0" top="20.0"/>
-        </padding>
+        <!-- Card for Theme Settings -->
+        <VBox spacing="10" styleClass="card" alignment="TOP_LEFT">
+            <padding>
+                <Insets bottom="20.0" left="30.0" right="30.0" top="20.0"/>
+            </padding>
 
-        <Label styleClass="sub-header-label" text="UI Theme"/>
-        <Separator/>
-        <Label text="Select your preferred application theme."/>
+            <Label styleClass="sub-header-label" text="UI Theme"/>
+            <Separator/>
+            <Label text="Select your preferred application theme."/>
 
-        <HBox spacing="10" alignment="CENTER_LEFT" style="-fx-padding: 10 0 0 0;">
-            <Button fx:id="lightThemeButton" text="Switch to Light Mode"/>
-            <Button fx:id="darkThemeButton" text="Switch to Dark Mode" styleClass="button-accent"/>
-        </HBox>
-    </VBox>
-
-
-    <!-- Card for Performance Settings -->
-    <VBox spacing="10" styleClass="card" alignment="TOP_LEFT">
-        <padding>
-            <Insets bottom="20.0" left="30.0" right="30.0" top="20.0"/>
-        </padding>
-
-        <Label styleClass="sub-header-label" text="Performance"/>
-        <Separator/>
-        <Label text="Configure hardware acceleration and logging."/>
-
-        <VBox spacing="10">
-             <javafx.scene.control.CheckBox fx:id="chkUseGpu" text="Use GPU Acceleration (if available)"/>
-             <javafx.scene.control.CheckBox fx:id="chkUseWsl" text="Enable WSL 2 (Required for RAPIDS/cuML on Windows)"/>
-             <javafx.scene.control.ComboBox fx:id="cmbGpuSelector" promptText="Select GPU Device" prefWidth="350.0"/>
-             <javafx.scene.control.CheckBox fx:id="chkStandardization" text="Enable Data Standardization (Z-Score)"/>
-             <javafx.scene.control.CheckBox fx:id="chkBalancedOpt" text="Optimize for Balanced Accuracy (for Imbalanced Data)"/>
-             <javafx.scene.control.CheckBox fx:id="enableLoggingCheckBox" text="Enable Detailed Logging"/>
-             <javafx.scene.control.CheckBox fx:id="darkModeCheckBox" text="Auto-save results" visible="false"/>
+            <HBox spacing="10" alignment="CENTER_LEFT" style="-fx-padding: 10 0 0 0;">
+                <Button fx:id="lightThemeButton" text="Switch to Light Mode"/>
+                <Button fx:id="darkThemeButton" text="Switch to Dark Mode" styleClass="button-accent"/>
+            </HBox>
         </VBox>
-    </VBox>
 
-</VBox>
+        <!-- Card for Performance Settings -->
+        <VBox spacing="10" styleClass="card" alignment="TOP_LEFT">
+            <padding>
+                <Insets bottom="20.0" left="30.0" right="30.0" top="20.0"/>
+            </padding>
+
+            <Label styleClass="sub-header-label" text="Performance &amp; Hardware"/>
+            <Separator/>
+            <Label text="Configure how the application uses your hardware resources."/>
+
+            <VBox spacing="15">
+                <CheckBox fx:id="gpuCheckBox" text="Enable GPU Acceleration (NVIDIA/cuML)" selected="true"/>
+
+                <VBox spacing="5" fx:id="hybridConfigBox">
+                    <CheckBox fx:id="hybridCheckBox" text="Enable Hybrid CPU-GPU 'Work Stealing'" selected="true"/>
+                    <Label text="Dynamic CPU Offload Ratio (Auto-Tuning)" style="-fx-text-fill: gray; -fx-font-size: 11px;"/>
+                </VBox>
+            </VBox>
+        </VBox>
+
+        <!-- Card for Advanced Mode -->
+        <VBox spacing="10" styleClass="card" alignment="TOP_LEFT">
+            <padding>
+                <Insets bottom="20.0" left="30.0" right="30.0" top="20.0"/>
+            </padding>
+
+            <Label styleClass="sub-header-label" text="Advanced Configuration"/>
+            <Separator/>
+            <Label text="Unlock manual controls for pipelines, trials, and validation."/>
+
+            <CheckBox fx:id="advancedModeCheckBox" text="Enable Advanced Mode" selected="false"/>
+
+            <!-- Advanced Pipeline Controls (Visible when Advanced Mode is enabled) -->
+            <VBox fx:id="advancedPipelineBox" spacing="10" disable="true" style="-fx-padding: 10 0 0 10;">
+                <Label style="-fx-font-weight: bold;" text="Pipeline Composition"/>
+                <HBox spacing="10" alignment="CENTER_LEFT">
+                    <Label text="Scaling Strategy:"/>
+                    <javafx.scene.control.ComboBox fx:id="scalingComboBox" prefWidth="150"/>
+                </HBox>
+                <CheckBox fx:id="featureSelectionCheckBox" text="Enable Feature Selection (Optimization)" selected="true"/>
+
+                <Separator/>
+                <Label style="-fx-font-weight: bold;" text="Algorithm Hyperparameters"/>
+                
+                <Label text="Genetic Algorithm (GA)" style="-fx-text-fill: gray;"/>
+                <HBox spacing="10" alignment="CENTER_LEFT">
+                    <Label text="Population:"/>
+                    <javafx.scene.control.Spinner fx:id="gaPopSpinner" prefWidth="80" editable="true"/>
+                    <Label text="Crossover Rate:"/>
+                    <javafx.scene.control.Slider fx:id="gaCrossoverSlider" min="0.0" max="1.0" value="0.8" showTickLabels="true" showTickMarks="true"/>
+                </HBox>
+                <HBox spacing="10" alignment="CENTER_LEFT">
+                    <Label text="Mutation Rate:"/>
+                    <javafx.scene.control.Slider fx:id="gaMutationSlider" min="0.0" max="0.3" value="0.05" showTickLabels="true" showTickMarks="true"/>
+                </HBox>
+
+                <Label text="Grey Wolf Optimizer (GWO)" style="-fx-text-fill: gray;"/>
+                <HBox spacing="10" alignment="CENTER_LEFT">
+                    <Label text="Population:"/>
+                    <javafx.scene.control.Spinner fx:id="gwoPopSpinner" prefWidth="80" editable="true"/>
+                </HBox>
+            </VBox>
+        </VBox>
+
+        <!-- Card for AI Assistant -->
+        <VBox spacing="10" styleClass="card" alignment="TOP_LEFT">
+            <padding>
+                <Insets bottom="20.0" left="30.0" right="30.0" top="20.0"/>
+            </padding>
+
+            <Label styleClass="sub-header-label" text="AI Assistant (Ollama)"/>
+            <Separator/>
+            <Label text="Configure the local LLM for chat and insights."/>
+
+            <VBox spacing="10">
+                <CheckBox fx:id="ollamaEnabledCheckBox" text="Enable AI Chatbox" selected="true"/>
+                <HBox spacing="10" alignment="CENTER_LEFT">
+                    <Label text="Model Name:"/>
+                    <javafx.scene.control.TextField fx:id="ollamaModelField" text="llama3"/>
+                </HBox>
+                <HBox spacing="10" alignment="CENTER_LEFT">
+                    <Label text="Wrapper URL:"/>
+                    <javafx.scene.control.TextField fx:id="ollamaUrlField" text="http://localhost:11434"/>
+                </HBox>
+            </VBox>
+        </VBox>
+
+    </VBox>
+</ScrollPane>

@@ -36,14 +36,18 @@ public class SvmClassifier implements IClassifier {
             return;
         }
 
-        // Use direct arguments for C and tol.
-        // Smile 2.6.0 fit signature: fit(double[][] x, int[] y, Kernel kernel, double
-        // C, double tol)
+        // Fix for Smile SVM: It requires/outputs labels -1 and 1.
+        // Our system uses 0 and 1. We must map.
+        int[] svmLabels = new int[labels.length];
+        for (int i = 0; i < labels.length; i++) {
+            // Map 0 -> -1, 1 -> 1
+            svmLabels[i] = (labels[i] == 0) ? -1 : 1;
+        }
 
         if ("linear".equals(this.kernelType)) {
-            this.model = SVM.fit(features, labels, new LinearKernel(), this.C, this.tol);
+            this.model = SVM.fit(features, svmLabels, new LinearKernel(), this.C, this.tol);
         } else {
-            this.model = SVM.fit(features, labels, new GaussianKernel(1.0), this.C, this.tol);
+            this.model = SVM.fit(features, svmLabels, new GaussianKernel(1.0), this.C, this.tol);
         }
     }
 
@@ -51,7 +55,15 @@ public class SvmClassifier implements IClassifier {
     public int[] predict(double[][] features) {
         if (this.model == null)
             return new int[features.length];
-        return this.model.predict(features);
+
+        int[] svmPreds = this.model.predict(features);
+        int[] systemPreds = new int[svmPreds.length];
+
+        for (int i = 0; i < svmPreds.length; i++) {
+            // Map -1 -> 0, 1 -> 1
+            systemPreds[i] = (svmPreds[i] == -1) ? 0 : 1;
+        }
+        return systemPreds;
     }
 
     // --- NEW METHOD to create a fast search version ---

@@ -8,7 +8,7 @@ import java.util.Properties;
 
 public class RandomForestClassifier implements IClassifier {
     private final int nTrees;
-    private RandomForest model;
+    private final ThreadLocal<RandomForest> model = new ThreadLocal<>();
 
     public RandomForestClassifier(int nTrees) {
         if (nTrees <= 0)
@@ -28,7 +28,7 @@ public class RandomForestClassifier implements IClassifier {
     @Override
     public void train(double[][] features, int[] labels) {
         if (features.length == 0 || features[0].length == 0) {
-            this.model = null;
+            this.model.remove();
             return;
         }
 
@@ -49,14 +49,15 @@ public class RandomForestClassifier implements IClassifier {
         props.setProperty("smile.random.forest.trees", String.valueOf(this.nTrees));
         props.setProperty("trees", String.valueOf(this.nTrees)); // Fallback
 
-        this.model = RandomForest.fit(formula, dataFrame, props);
+        this.model.set(RandomForest.fit(formula, dataFrame, props));
     }
 
     @Override
     public int[] predict(double[][] features) {
-        if (this.model == null)
+        RandomForest m = this.model.get();
+        if (m == null)
             return new int[features.length];
         DataFrame predictionFrame = DataFrame.of(features);
-        return this.model.predict(predictionFrame);
+        return m.predict(predictionFrame);
     }
 }

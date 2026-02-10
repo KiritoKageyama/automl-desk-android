@@ -2,6 +2,7 @@ package com.example.automl_prototype_1.algorithm;
 
 import com.example.automl_prototype_1.model.Dataset;
 import com.example.automl_prototype_1.service.IClassifier;
+import com.example.automl_prototype_1.service.LogService;
 import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.ThreadLocalRandom;
@@ -54,6 +55,21 @@ public class BinaryParticleSwarmOptimization extends AbstractFeatureSelectionAlg
     }
 
     @Override
+    protected double getAverageFitness() {
+        if (fitness == null || fitness.length == 0)
+            return 0.0;
+        double sum = 0.0;
+        int count = 0;
+        for (double f : fitness) {
+            if (f != Double.NEGATIVE_INFINITY) {
+                sum += f;
+                count++;
+            }
+        }
+        return count > 0 ? sum / count : 0.0;
+    }
+
+    @Override
     protected void initialize(int numFeatures, Dataset dataset, IClassifier classifier, List<Fold> folds) {
         this.positions = new double[populationSize][numFeatures];
         this.velocities = new double[populationSize][numFeatures];
@@ -63,17 +79,24 @@ public class BinaryParticleSwarmOptimization extends AbstractFeatureSelectionAlg
         this.gBestPosition = new double[numFeatures];
         this.gBestFitness = Double.NEGATIVE_INFINITY;
 
-        List<FitnessResult> initialResults = IntStream.range(0, populationSize).parallel().mapToObj(i -> {
-            var rand = ThreadLocalRandom.current();
-            double[] pos = new double[numFeatures];
-            double[] vel = new double[numFeatures];
-            for (int j = 0; j < numFeatures; j++) {
-                pos[j] = rand.nextDouble() < 0.5 ? 0 : 1;
-                vel[j] = -1 + (2 * rand.nextDouble());
-            }
-            double fit = calculateFitness(pos, classifier, folds);
-            return new FitnessResult(i, fit, pos, vel);
-        }).toList();
+        // Smart Parallelism
+        List<FitnessResult> initialResults = new java.util.ArrayList<>();
+        try {
+            initialResults = this.executorService
+                    .submit(() -> IntStream.range(0, populationSize).parallel().mapToObj(i -> {
+                        var rand = ThreadLocalRandom.current();
+                        double[] pos = new double[numFeatures];
+                        double[] vel = new double[numFeatures];
+                        for (int j = 0; j < numFeatures; j++) {
+                            pos[j] = rand.nextDouble() < 0.5 ? 0 : 1;
+                            vel[j] = -1 + (2 * rand.nextDouble());
+                        }
+                        double fit = calculateFitness(pos, classifier, folds);
+                        return new FitnessResult(i, fit, pos, vel);
+                    }).toList()).get();
+        } catch (Exception e) {
+            LogService.error("BPSO", "Error in parallel initialization: " + e.getMessage());
+        }
 
         for (FitnessResult res : initialResults) {
             this.positions[res.index] = res.position;
@@ -83,33 +106,37 @@ public class BinaryParticleSwarmOptimization extends AbstractFeatureSelectionAlg
             this.pBestPositions[res.index] = Arrays.copyOf(res.position, numFeatures);
         }
         updateGlobalBest();
-        System.out.println("BPSO Parallel Initial Best Fitness: " + this.gBestFitness);
-        for (int i = 0; i < this.populationSize; i++) {
-            fitness[i] = calculateFitness(positions[i], classifier, folds);
-            pBestFitness[i] = fitness[i];
-            pBestPositions[i] = Arrays.copyOf(positions[i], numFeatures);
-        }
         updateGlobalBest();
+        LogService.info("BPSO", "Parallel Initial Best Fitness: " + this.gBestFitness);
+        // Redundant re-calculation removed. Fitness was already calculated in parallel
+        // stream.
     }
 
     @Override
     protected void updatePopulation(int iteration, int numFeatures, Dataset dataset, IClassifier classifier,
             List<Fold> folds) {
-        List<FitnessResult> updatedResults = IntStream.range(0, populationSize).parallel().mapToObj(i -> {
-            var rand = ThreadLocalRandom.current();
-            double[] newPos = new double[numFeatures];
-            double[] newVel = Arrays.copyOf(velocities[i], numFeatures);
-            for (int j = 0; j < numFeatures; j++) {
-                double r1 = rand.nextDouble(), r2 = rand.nextDouble();
-                double cognitive = c1 * r1 * (pBestPositions[i][j] - positions[i][j]);
-                double social = c2 * r2 * (gBestPosition[j] - positions[i][j]);
-                newVel[j] = (w * newVel[j]) + cognitive + social;
-                double sigmoid = 1.0 / (1.0 + Math.exp(-newVel[j]));
-                newPos[j] = rand.nextDouble() < sigmoid ? 1.0 : 0.0;
-            }
-            double fit = calculateFitness(newPos, classifier, folds);
-            return new FitnessResult(i, fit, newPos, newVel);
-        }).toList();
+        // Smart Parallelism
+        List<FitnessResult> updatedResults = new java.util.ArrayList<>();
+        try {
+            updatedResults = this.executorService
+                    .submit(() -> IntStream.range(0, populationSize).parallel().mapToObj(i -> {
+                        var rand = ThreadLocalRandom.current();
+                        double[] newPos = new double[numFeatures];
+                        double[] newVel = Arrays.copyOf(velocities[i], numFeatures);
+                        for (int j = 0; j < numFeatures; j++) {
+                            double r1 = rand.nextDouble(), r2 = rand.nextDouble();
+                            double cognitive = c1 * r1 * (pBestPositions[i][j] - positions[i][j]);
+                            double social = c2 * r2 * (gBestPosition[j] - positions[i][j]);
+                            newVel[j] = (w * newVel[j]) + cognitive + social;
+                            double sigmoid = 1.0 / (1.0 + Math.exp(-newVel[j]));
+                            newPos[j] = rand.nextDouble() < sigmoid ? 1.0 : 0.0;
+                        }
+                        double fit = calculateFitness(newPos, classifier, folds);
+                        return new FitnessResult(i, fit, newPos, newVel);
+                    }).toList()).get();
+        } catch (Exception e) {
+            LogService.error("BPSO", "Error in parallel update: " + e.getMessage());
+        }
 
         for (FitnessResult res : updatedResults) {
             this.positions[res.index] = res.position;
@@ -121,7 +148,7 @@ public class BinaryParticleSwarmOptimization extends AbstractFeatureSelectionAlg
             }
         }
         updateGlobalBest();
-        System.out.println("Iteration " + (iteration + 1) + " | Best Fitness: " + this.gBestFitness);
+        LogService.info("BPSO", "Iteration " + (iteration + 1) + " | Best Fitness: " + this.gBestFitness);
     }
 
     private void updateGlobalBest() {

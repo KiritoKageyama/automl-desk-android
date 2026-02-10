@@ -3,14 +3,17 @@ package com.example.automl_prototype_1.classifier;
 import com.aparapi.Kernel;
 import com.aparapi.Range;
 import com.example.automl_prototype_1.service.IClassifier;
+import java.util.Arrays;
+import java.util.stream.IntStream;
 
 /**
  * A GPU-accelerated KNN Classifier using Aparapi.
- * Implementation Details:
- * - Offloads the distance calculation matrix to the GPU.
- * - CPU handles sorting and majority voting (due to complexity of sorting on
- * GPU without specialized kernels like Bitonic Sort).
- * - This demonstrates "Explicit GPU Offloading" of the O(N*M) heavy lifting.
+ * Optimized for high-frequency calls (e.g. Feature Selection/GA).
+ * 
+ * Improvements:
+ * - Persistent Kernel instance (avoids recompilation overhead).
+ * - Parallel flattening of arrays (speeds up CPU prep).
+ * - minimized memory allocation.
  */
 public class GpuKnnClassifier implements IClassifier {
 
@@ -18,6 +21,9 @@ public class GpuKnnClassifier implements IClassifier {
     private static boolean gpuCircuitBreakerOpen = false; // Circuit breaker for GPU failures
     private double[][] trainFeatures;
     private int[] trainLabels;
+
+    // Persistent Kernel to reuse OpenCL context
+    private KnnKernel kernel;
 
     public GpuKnnClassifier(int k) {
         this.k = k;
@@ -48,45 +54,26 @@ public class GpuKnnClassifier implements IClassifier {
         int numTest = testFeatures.length;
         int numDims = trainFeatures[0].length;
 
-        // Flatten arrays for Aparapi (Aparapi works best with 1D primitive arrays)
-        final float[] flatTrain = flatten(trainFeatures);
-        final float[] flatTest = flatten(testFeatures);
+        // Flatten arrays for Aparapi (Parallelized)
+        final float[] flatTrain = flattenParallel(trainFeatures);
+        final float[] flatTest = flattenParallel(testFeatures);
         final float[] distances = new float[numTest * numTrain];
-
-        // Define the Kernel
-        Kernel kernel = new Kernel() {
-            @Override
-            public void run() {
-                // 1D Linearization to avoid Local Size Exceeded errors on 2D ranges
-                int globalId = getGlobalId();
-                int testIdx = globalId / numTrain;
-                int trainIdx = globalId % numTrain;
-
-                // Bounds check (vital for 1D if padding occurs, though Aparapi usually handles
-                // precise ranges)
-                if (testIdx >= numTest || trainIdx >= numTrain)
-                    return;
-
-                // Calculate Euclidean distance between test[testIdx] and train[trainIdx]
-                float distSq = 0;
-                int testOffset = testIdx * numDims;
-                int trainOffset = trainIdx * numDims;
-
-                for (int d = 0; d < numDims; d++) {
-                    float diff = flatTest[testOffset + d] - flatTrain[trainOffset + d];
-                    distSq += diff * diff;
-                }
-
-                // Store result
-                distances[globalId] = distSq;
-            }
-        };
 
         // Circuit Breaker Check
         if (gpuCircuitBreakerOpen) {
             calculateDistancesCpu(flatTrain, flatTest, numDims, distances);
         } else {
             try {
+                // Initialize Kernel if null or explicitly forced update
+                if (kernel == null) {
+                    kernel = new KnnKernel();
+                }
+
+                // Update Kernel Data
+                // Note: Aparapi detects modification of these array references and re-uploads
+                // data automatically.
+                kernel.updateData(flatTrain, flatTest, distances, numTrain, numTest, numDims);
+
                 // Determine Target Device
                 com.aparapi.device.Device selectedDevice = null;
                 String selectedName = com.example.automl_prototype_1.service.AppStateService.getInstance()
@@ -105,25 +92,33 @@ public class GpuKnnClassifier implements IClassifier {
                 Range range;
                 if (selectedDevice != null) {
                     range = selectedDevice.createRange(globalSize, localSize);
-                    System.out.println(
-                            "CORE: Targeting Specific GPU (1D Explicit): " + selectedDevice.getShortDescription());
                 } else {
                     range = Range.create(globalSize, localSize);
                 }
 
                 kernel.execute(range);
 
-                if (System.currentTimeMillis() % 1000 == 0) {
-                    System.out.println("CORE: GPU KNN Mode: " + kernel.getTargetDevice().getType());
-                }
-            } catch (Exception e) {
-                System.err.println("CORE: GPU Execution Failed. Exception follows:");
-                e.printStackTrace();
-                System.err.println("CORE: Tripping Circuit Breaker. Switching to CPU Fallback.");
-                gpuCircuitBreakerOpen = true; // Trip the breaker
+                // Explicitly read back distances (sometimes needed depending on mode, usually
+                // auto)
+                // distances = kernel.distances;
+
+                // Note: We do NOT dispose the kernel here. We keep it for reuse.
+
+            } catch (Throwable e) {
+                com.example.automl_prototype_1.service.LogService.error("GPU-KNN",
+                        "GPU Execution Failed: " + e.getMessage());
+                com.example.automl_prototype_1.service.LogService.error("GPU-KNN",
+                        "Tripping Circuit Breaker. Switching to CPU Fallback.");
+                gpuCircuitBreakerOpen = true;
                 calculateDistancesCpu(flatTrain, flatTest, numDims, distances);
-            } finally {
-                kernel.dispose();
+                // If failed, try to dispose the corrupted kernel
+                if (kernel != null) {
+                    try {
+                        kernel.dispose();
+                    } catch (Exception ex) {
+                    }
+                    kernel = null;
+                }
             }
         }
 
@@ -131,13 +126,13 @@ public class GpuKnnClassifier implements IClassifier {
         int[] predictions = new int[numTest];
 
         // Parallel processing for O(N) reduction instead of O(N log N) sort
-        java.util.stream.IntStream.range(0, numTest).parallel().forEach(t -> {
+        IntStream.range(0, numTest).parallel().forEach(t -> {
             int offset = t * numTrain;
 
             // Fixed-size arrays for top-k candidates (avoid object allocation)
             int[] bestIndices = new int[k];
             float[] bestDists = new float[k];
-            java.util.Arrays.fill(bestDists, Float.MAX_VALUE);
+            Arrays.fill(bestDists, Float.MAX_VALUE);
 
             for (int i = 0; i < numTrain; i++) {
                 float dist = distances[offset + i];
@@ -169,7 +164,7 @@ public class GpuKnnClassifier implements IClassifier {
             }
             // Resize buffer if needed (rare case numTrain < k)
             if (validCount < k)
-                buffer = java.util.Arrays.copyOf(buffer, validCount);
+                buffer = Arrays.copyOf(buffer, validCount);
 
             predictions[t] = majorityVote(buffer);
         });
@@ -183,32 +178,47 @@ public class GpuKnnClassifier implements IClassifier {
         if (labels.length == 1)
             return labels[0];
 
-        // Simple majority vote
-        // Map<Label, Count>
-        java.util.Map<Integer, Integer> counts = new java.util.HashMap<>();
-        int maxCount = -1;
-        int maxLabel = -1;
+        // Optimized Majority Vote: Sort and Scan (Zero Allocation)
+        // Since K is small (usually < 20), sorting is extremely fast (insertion sort
+        // likely)
+        Arrays.sort(labels);
 
-        for (int label : labels) {
-            int c = counts.getOrDefault(label, 0) + 1;
-            counts.put(label, c);
-            if (c > maxCount) {
-                maxCount = c;
-                maxLabel = label;
+        int maxLabel = labels[0];
+        int maxCount = 1;
+        int currentLabel = labels[0];
+        int currentCount = 1;
+
+        for (int i = 1; i < labels.length; i++) {
+            if (labels[i] == currentLabel) {
+                currentCount++;
+            } else {
+                if (currentCount > maxCount) {
+                    maxCount = currentCount;
+                    maxLabel = currentLabel;
+                }
+                currentLabel = labels[i];
+                currentCount = 1;
             }
         }
+        // Final check
+        if (currentCount > maxCount) {
+            maxLabel = currentLabel;
+        }
+
         return maxLabel;
     }
 
-    private float[] flatten(double[][] matrix) {
+    private float[] flattenParallel(double[][] matrix) {
         int rows = matrix.length;
         int cols = matrix[0].length;
         float[] flat = new float[rows * cols];
-        for (int i = 0; i < rows; i++) {
+
+        // Parallel flatten: Each row is processed independently
+        IntStream.range(0, rows).parallel().forEach(i -> {
             for (int j = 0; j < cols; j++) {
                 flat[i * cols + j] = (float) matrix[i][j];
             }
-        }
+        });
         return flat;
     }
 
@@ -216,7 +226,7 @@ public class GpuKnnClassifier implements IClassifier {
         int numTest = flatTest.length / numDims;
         int numTrain = flatTrain.length / numDims;
 
-        java.util.stream.IntStream.range(0, numTest).parallel().forEach(testIdx -> {
+        IntStream.range(0, numTest).parallel().forEach(testIdx -> {
             int testOffset = testIdx * numDims;
             for (int trainIdx = 0; trainIdx < numTrain; trainIdx++) {
                 int trainOffset = trainIdx * numDims;
@@ -228,5 +238,49 @@ public class GpuKnnClassifier implements IClassifier {
                 distances[testIdx * numTrain + trainIdx] = distSq;
             }
         });
+    }
+
+    // Explicit Named Kernel Class
+    public static class KnnKernel extends Kernel {
+
+        float[] flatTrain;
+        float[] flatTest;
+        float[] distances;
+        int numTrain;
+        int numDims;
+        int numTest;
+
+        public void updateData(float[] train, float[] test, float[] dist, int nTrain, int nTest, int dims) {
+            this.flatTrain = train;
+            this.flatTest = test;
+            this.distances = dist;
+            this.numTrain = nTrain;
+            this.numTest = nTest;
+            this.numDims = dims;
+        }
+
+        @Override
+        public void run() {
+            // 1D Linearization
+            int globalId = getGlobalId();
+            int testIdx = globalId / numTrain;
+            int trainIdx = globalId % numTrain;
+
+            // Bounds check
+            if (testIdx >= numTest || trainIdx >= numTrain)
+                return;
+
+            float distSq = 0;
+            int testOffset = testIdx * numDims;
+            int trainOffset = trainIdx * numDims;
+
+            // Note: Loops with known bounds are better, but here numDims is dynamic
+            for (int d = 0; d < numDims; d++) {
+                float diff = flatTest[testOffset + d] - flatTrain[trainOffset + d];
+                distSq += diff * diff;
+            }
+
+            distances[globalId] = distSq;
+        }
     }
 }

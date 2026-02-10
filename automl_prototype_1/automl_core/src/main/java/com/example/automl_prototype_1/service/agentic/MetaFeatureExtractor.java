@@ -62,6 +62,48 @@ public class MetaFeatureExtractor {
             }
         }
 
-        return new MetaFeatures(numInstances, numFeatures, numClasses, imbalanceRatio, sparsity);
+        // Calculate Skewness and Kurtosis (Max)
+        double maxSkewness = 0.0;
+        double maxKurtosis = 0.0;
+
+        if (numInstances > 1 && numFeatures > 0) {
+            for (int j = 0; j < numFeatures; j++) {
+                // Collect column data
+                double[] col = new double[numInstances];
+                double sum = 0.0;
+                for (int i = 0; i < numInstances; i++) {
+                    col[i] = features[i][j];
+                    sum += col[i];
+                }
+                double mean = sum / numInstances;
+
+                double sumSqDiff = 0.0;
+                double sumCuDiff = 0.0;
+                double sumQuDiff = 0.0;
+
+                for (double val : col) {
+                    double diff = val - mean;
+                    sumSqDiff += diff * diff;
+                    sumCuDiff += diff * diff * diff;
+                    sumQuDiff += diff * diff * diff * diff;
+                }
+
+                double variance = sumSqDiff / (numInstances - 1);
+                double stdev = Math.sqrt(variance);
+
+                if (stdev > 1e-9) {
+                    double skew = (sumCuDiff / numInstances) / Math.pow(stdev, 3);
+                    double kurt = (sumQuDiff / numInstances) / Math.pow(stdev, 4) - 3.0; // Excess Kurtosis
+
+                    if (Math.abs(skew) > Math.abs(maxSkewness))
+                        maxSkewness = Math.abs(skew);
+                    if (Math.abs(kurt) > Math.abs(maxKurtosis))
+                        maxKurtosis = Math.abs(kurt);
+                }
+            }
+        }
+
+        return new MetaFeatures(numInstances, numFeatures, numClasses, imbalanceRatio, sparsity, maxSkewness,
+                maxKurtosis);
     }
 }

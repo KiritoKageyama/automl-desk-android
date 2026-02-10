@@ -57,6 +57,21 @@ public class DifferentialEvolution extends AbstractFeatureSelectionAlgorithm {
     }
 
     @Override
+    protected double getAverageFitness() {
+        if (fitnesses == null || fitnesses.length == 0)
+            return 0.0;
+        double sum = 0.0;
+        int count = 0;
+        for (double f : fitnesses) {
+            if (f != Double.NEGATIVE_INFINITY) {
+                sum += f;
+                count++;
+            }
+        }
+        return count > 0 ? sum / count : 0.0;
+    }
+
+    @Override
     protected void initialize(int numFeatures, Dataset dataset, IClassifier classifier, List<Fold> folds) {
         this.population = new double[populationSize][numFeatures];
         this.fitnesses = new double[populationSize];
@@ -84,51 +99,63 @@ public class DifferentialEvolution extends AbstractFeatureSelectionAlgorithm {
 
         List<Integer> indices = IntStream.range(0, populationSize).boxed().toList();
 
-        // Parallel processing of trials
-        List<TrialResult> results = indices.parallelStream().map(i -> {
-            var rand = ThreadLocalRandom.current();
+        // Sequential processing to avoid system freeze
+        // Smart Parallelism
+        int optimalThreads = com.example.automl_prototype_1.service.HardwareAcceleratorService
+                .calculateOptimalThreadCount();
+        @SuppressWarnings("resource")
+        java.util.concurrent.ForkJoinPool customThreadPool = new java.util.concurrent.ForkJoinPool(optimalThreads);
+        List<TrialResult> results = new java.util.ArrayList<>();
+        try {
+            results = customThreadPool.submit(() -> indices.parallelStream().map(i -> {
+                var rand = ThreadLocalRandom.current();
 
-            // 1. Mutation: Select r1, r2, r3 distinct from i
-            int r1, r2, r3;
-            do {
-                r1 = rand.nextInt(populationSize);
-            } while (r1 == i);
-            do {
-                r2 = rand.nextInt(populationSize);
-            } while (r2 == i || r2 == r1);
-            do {
-                r3 = rand.nextInt(populationSize);
-            } while (r3 == i || r3 == r1 || r3 == r2);
+                // 1. Mutation: Select r1, r2, r3 distinct from i
+                int r1, r2, r3;
+                do {
+                    r1 = rand.nextInt(populationSize);
+                } while (r1 == i);
+                do {
+                    r2 = rand.nextInt(populationSize);
+                } while (r2 == i || r2 == r1);
+                do {
+                    r3 = rand.nextInt(populationSize);
+                } while (r3 == i || r3 == r1 || r3 == r2);
 
-            double[] mutant = new double[numFeatures];
-            for (int j = 0; j < numFeatures; j++) {
-                // Continuous mutation: v = x_r1 + F * (x_r2 - x_r3)
-                // Since our vectors are binary/continuous hybrid in this impl (init as binary
-                // but mutated as continuous),
-                // we treat them as continuous probabilities.
-                double val = population[r1][j] + F * (population[r2][j] - population[r3][j]);
-                mutant[j] = val;
-            }
-
-            // 2. Crossover (Binary)
-            double[] trial = new double[numFeatures];
-            int jRand = rand.nextInt(numFeatures);
-            for (int j = 0; j < numFeatures; j++) {
-                if (rand.nextDouble() < CR || j == jRand) {
-                    // From mutant (apply sigmoid to discretize for fitness eval)
-                    double sigmoid = 1.0 / (1.0 + Math.exp(-mutant[j]));
-                    trial[j] = rand.nextDouble() < sigmoid ? 1.0 : 0.0;
-                } else {
-                    // From target
-                    trial[j] = population[i][j];
+                double[] mutant = new double[numFeatures];
+                for (int j = 0; j < numFeatures; j++) {
+                    // Continuous mutation: v = x_r1 + F * (x_r2 - x_r3)
+                    // Since our vectors are binary/continuous hybrid in this impl (init as binary
+                    // but mutated as continuous),
+                    // we treat them as continuous probabilities.
+                    double val = population[r1][j] + F * (population[r2][j] - population[r3][j]);
+                    mutant[j] = val;
                 }
-            }
 
-            // 3. Selection
-            double trialFitness = calculateFitness(trial, classifier, folds);
-            return new TrialResult(i, trialFitness, trial);
+                // 2. Crossover (Binary)
+                double[] trial = new double[numFeatures];
+                int jRand = rand.nextInt(numFeatures);
+                for (int j = 0; j < numFeatures; j++) {
+                    if (rand.nextDouble() < CR || j == jRand) {
+                        // From mutant (apply sigmoid to discretize for fitness eval)
+                        double sigmoid = 1.0 / (1.0 + Math.exp(-mutant[j]));
+                        trial[j] = rand.nextDouble() < sigmoid ? 1.0 : 0.0;
+                    } else {
+                        // From target
+                        trial[j] = population[i][j];
+                    }
+                }
 
-        }).toList();
+                // 3. Selection
+                double trialFitness = calculateFitness(trial, classifier, folds);
+                return new TrialResult(i, trialFitness, trial);
+
+            }).toList()).get();
+        } catch (Exception e) {
+            e.printStackTrace();
+        } finally {
+            customThreadPool.shutdown();
+        }
 
         // Sequential Update
         for (TrialResult res : results) {

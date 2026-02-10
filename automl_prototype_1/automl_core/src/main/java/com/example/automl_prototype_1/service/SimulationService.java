@@ -29,9 +29,6 @@ public class SimulationService {
 
         // Take a sample (first 10 rows)
         int sampleSize = Math.min(10, dataset.getRecords().size());
-        // List<Map<String, String>> sampleRecords = dataset.getRecords().subList(0,
-        // sampleSize); // Unused
-        // List<String> headers = dataset.getHeaders(); // Unused
 
         // We need a dummy dataset for the preprocessor specific to this sample,
         // OR we can run preprocessor on the whole thing and take a sample.
@@ -44,7 +41,14 @@ public class SimulationService {
         // If optimization needed: Calculate stats on sample only. But user wants "Real
         // Time Calculator".
 
-        Dataset processedDataset = preprocessorService.runPreprocessingPipeline(dataset, "Class", scalingStrategy);
+        // Create config from legacy string
+        PreprocessingConfig config = new PreprocessingConfig();
+        config.setScalingStrategy(scalingStrategy);
+        config.setAutoRemoveIdColumns(true); // Default for simulation
+        config.setImputeMissingValues(true);
+        config.setRemoveOutliers(false);
+
+        Dataset processedDataset = preprocessorService.runPreprocessingPipeline(dataset, "Class", config);
 
         List<Map<String, String>> processedSample = processedDataset.getRecords().stream()
                 .limit(sampleSize)
@@ -211,6 +215,33 @@ public class SimulationService {
     }
 
     public TuningSimulationData getTuningLogic() {
+        // dynamic link to real progress
+        var snapshot = ProgressTrackingService.getInstance().snapshot();
+        var current = snapshot.currentRun();
+
+        if (current != null && current.phase() == com.example.automl_prototype_1.model.progress.Phase.RUNNING) {
+            String trace = String.format("Status: RUNNING\nTrial: %d/%d\nIteration: %d/%d\nBest Score: %.4f",
+                    current.currentTrial(), current.totalTrials(),
+                    current.currentIter(), current.totalIters(),
+                    current.bestScore());
+
+            return new TuningSimulationData(
+                    "Active Optimization (" + current.algoId() + ")",
+                    "Live Execution Monitor",
+                    "Maximize Accuracy",
+                    trace);
+        } else if (snapshot.globalBestScore() > 0) {
+            // Show result of last run
+            String trace = String.format("Status: COMPLETED\nTop Algorithm: %s\nBest Score: %.4f\nFound at: Trial %d",
+                    snapshot.globalBestAlgo(), snapshot.globalBestScore(), snapshot.globalBestTrial());
+
+            return new TuningSimulationData(
+                    "Optimization Report",
+                    "Post-Run Analysis",
+                    "Best Result Found",
+                    trace);
+        }
+
         return new TuningSimulationData(
                 "Monte Carlo Search (Random)",
                 "PopSize ~ U(10, 50), MaxIter ~ U(50, 1000)",

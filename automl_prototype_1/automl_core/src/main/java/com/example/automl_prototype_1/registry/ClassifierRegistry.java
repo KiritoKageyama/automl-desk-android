@@ -1,7 +1,18 @@
 package com.example.automl_prototype_1.registry;
 
 import com.example.automl_prototype_1.service.IClassifier;
-import com.example.automl_prototype_1.classifier.*;
+import com.example.automl_prototype_1.classifier.RandomForestClassifier;
+import com.example.automl_prototype_1.classifier.LogisticRegression;
+import com.example.automl_prototype_1.classifier.KnnClassifier;
+import com.example.automl_prototype_1.classifier.XGBoostClassifier;
+import com.example.automl_prototype_1.classifier.SvmClassifier;
+import com.example.automl_prototype_1.classifier.GpuKnnClassifier;
+import com.example.automl_prototype_1.classifier.GpuLogisticRegression;
+import com.example.automl_prototype_1.classifier.GpuRandomForestClassifier;
+import com.example.automl_prototype_1.classifier.GpuPythonSvmClassifier;
+import com.example.automl_prototype_1.classifier.GpuPythonXGBoostClassifier;
+import com.example.automl_prototype_1.classifier.GpuPythonCatBoostClassifier;
+import com.example.automl_prototype_1.classifier.GpuPythonLightGbmClassifier;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -45,15 +56,14 @@ public class ClassifierRegistry {
             case "GPU-KNN" -> new GpuKnnClassifier();
             case "GPU-Logistic Regression" -> new GpuLogisticRegression();
             case "Random Forest (GPU Accelerated)" -> new GpuRandomForestClassifier();
-            case "SVM (Linear GPU)" -> new GpuSvmClassifier();
-            case "XGBoost (GPU Accelerated)" -> new GpuXGBoostClassifier();
+            case "SVM (Linear GPU)" -> new GpuPythonSvmClassifier(1.0, "linear");
+            case "XGBoost (GPU Accelerated)" -> new GpuPythonXGBoostClassifier();
 
             // Python Bridge Wrappers
-            case "XGBoost (Python/GPU Bridge)" -> new GpuXGBoostClassifier(); // Mapped to the refactored class
+            case "XGBoost (Python/GPU Bridge)" -> new GpuPythonXGBoostClassifier();
             case "SVM (Python/GPU/RBF Bridge)" -> new GpuPythonSvmClassifier();
-            case "AdaBoost (Python)" -> new PythonAdaBoostClassifier();
-            case "Gradient Boosting (Python)" -> new PythonGradientBoostingClassifier();
-            case "Decision Tree (Python)" -> new PythonDecisionTreeClassifier();
+            case "CatBoost (Python/GPU Bridge)" -> new GpuPythonCatBoostClassifier();
+            case "LightGBM (Python/GPU Bridge)" -> new GpuPythonLightGbmClassifier();
 
             // Fallbacks for fuzzy matching (kept for backward compatibility with old
             // registry logic)
@@ -61,7 +71,7 @@ public class ClassifierRegistry {
                 if (name.contains("KNN") && name.contains("GPU"))
                     yield new GpuKnnClassifier();
                 if (name.contains("SVM") && name.contains("GPU"))
-                    yield new GpuSvmClassifier();
+                    yield new GpuPythonSvmClassifier();
                 yield null;
             }
         };
@@ -74,25 +84,27 @@ public class ClassifierRegistry {
      */
     public List<String> getClassifierNames() {
         List<String> names = new ArrayList<>();
-        // Basic
+        // Basic (Always available CPU versions)
         names.add("KNN");
         names.add("Random Forest");
         names.add("SVM");
         names.add("XGBoost");
         names.add("Logistic Regression");
 
-        // Advanced
-        names.add("GPU-KNN");
-        names.add("GPU-Logistic Regression");
-        names.add("Random Forest (GPU Accelerated)");
-        names.add("XGBoost (GPU Accelerated)");
-        names.add("SVM (Linear GPU)");
+        // Advanced (GPU) - Only if GPU is ENABLED
+        if (com.example.automl_prototype_1.service.AppStateService.getInstance().isUseGpu()) {
+            names.add("GPU-KNN");
+            names.add("GPU-Logistic Regression");
+            names.add("Random Forest (GPU Accelerated)");
+            names.add("XGBoost (GPU Accelerated)");
+            names.add("SVM (Linear GPU)");
 
-        // Python
-        names.add("XGBoost (Python/GPU Bridge)");
-        names.add("SVM (Python/GPU/RBF Bridge)");
-        names.add("AdaBoost (Python)");
-        names.add("Decision Tree (Python)");
+            // Python Bridge Wrappers (Explicit GPU Backend)
+            names.add("XGBoost (Python/GPU Bridge)");
+            names.add("SVM (Python/GPU/RBF Bridge)");
+            names.add("CatBoost (Python/GPU Bridge)");
+            names.add("LightGBM (Python/GPU Bridge)");
+        }
 
         return Collections.unmodifiableList(names);
     }

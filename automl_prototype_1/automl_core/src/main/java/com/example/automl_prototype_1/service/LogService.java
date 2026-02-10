@@ -49,10 +49,15 @@ public class LogService {
         void onNewLog(String message);
     }
 
-    private LogListener listener;
+    private final java.util.List<LogListener> listeners = new java.util.concurrent.CopyOnWriteArrayList<>();
 
-    public void setListener(LogListener listener) {
-        this.listener = listener;
+    public void addListener(LogListener listener) {
+        if (listener != null)
+            listeners.add(listener);
+    }
+
+    public void removeListener(LogListener listener) {
+        listeners.remove(listener);
     }
 
     /**
@@ -63,36 +68,99 @@ public class LogService {
     }
 
     /**
+     * Helper for warning messages.
+     */
+    public static void warn(String source, String message) {
+        getInstance().log(source, "WARN: " + message);
+    }
+
+    /**
      * Logs a message with a specific source/context.
      * 
      * @param source  The component generating the log (e.g., "GA",
      *                "ExecutionService").
      * @param message The details of the operation.
      */
+    private String lastLogMessage = "";
+    private int duplicateCount = 0;
+    private static final int MAX_DUPLICATES_SHOWN = 5;
+
     public void log(String source, String message) {
         // Respect the "Detailed Logging" toggle
-        // Only check if AppStateService is ready to avoid circular dependency
         if (AppStateService.hasInstance() && !AppStateService.getInstance().isLoggingEnabled()) {
-            // Optional: Allow critical errors through
-            if (!message.contains("ERROR"))
+            if (!message.contains("ERROR") && !message.contains("Exception") && !message.contains("Critical"))
                 return;
+        }
+
+        // Deduplication Logic
+        synchronized (this) {
+            if (message.equals(lastLogMessage)) {
+                duplicateCount++;
+                if (duplicateCount > MAX_DUPLICATES_SHOWN) {
+                    // Stop printing after N duplicates to save resources
+                    return;
+                }
+            } else {
+                if (duplicateCount > MAX_DUPLICATES_SHOWN) {
+                    // Summarize the skipped ones
+                    String entry = String.format("[%s] [%s] ... (Skipped %d identical messages)",
+                            LocalDateTime.now().format(timeFormatter), source, (duplicateCount - MAX_DUPLICATES_SHOWN));
+                    logBuffer.add(entry);
+                    for (LogListener l : listeners)
+                        l.onNewLog(entry);
+                }
+                lastLogMessage = message;
+                duplicateCount = 0;
+            }
         }
 
         String timestamp = LocalDateTime.now().format(timeFormatter);
         String entry = String.format("[%s] [%s] %s", timestamp, source, message);
         logBuffer.add(entry);
 
-        // Notify UI Listener (Fire and Forget)
-        if (listener != null) {
-            listener.onNewLog(entry);
+        for (LogListener l : listeners) {
+            l.onNewLog(entry);
         }
+
+        // Write to persistent execution.log
+        StatusDumperService.getInstance().appendLog(entry);
+        // Force print to console for debugging visibility
+        // TEMP: Print everything - Removed for production quality
+        // System.out.println(entry);
     }
 
     /**
-     * Generates the full execution report as a single string.
-     * 
-     * @return The formatted report.
+     * Generates a critical analysis of the logs, highlighting errors and warnings.
+     * Useful for post-mortem analysis after a forced stop.
      */
+    public String analyzeCriticalErrors() {
+        StringBuilder analysis = new StringBuilder();
+        analysis.append("--- CRITICAL LOG ANALYSIS ---\n");
+        int errorCount = 0;
+        int warningCount = 0;
+
+        for (String entry : logBuffer) {
+            if (entry.contains("ERROR") || entry.contains("Exception") || entry.contains("Failed")
+                    || entry.contains("Exit code")) {
+                analysis.append("[CRITICAL] ").append(entry).append("\n");
+                errorCount++;
+            } else if (entry.contains("Warning") || entry.contains("deprecated")) {
+                warningCount++;
+            }
+        }
+
+        if (errorCount == 0) {
+            analysis.append("No explicit errors found in the current log buffer.\n");
+        } else {
+            analysis.append("Found ").append(errorCount).append(" critical errors.\n");
+        }
+        if (warningCount > 0) {
+            analysis.append("Found ").append(warningCount).append(" warnings.\n");
+        }
+        analysis.append("-----------------------------\n");
+        return analysis.toString();
+    }
+
     public String generateReport() {
         StringBuilder sb = new StringBuilder();
         sb.append("=================================================================\n");

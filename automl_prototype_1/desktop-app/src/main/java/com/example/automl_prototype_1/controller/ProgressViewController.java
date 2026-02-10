@@ -7,7 +7,6 @@ import javafx.application.Platform;
 import javafx.concurrent.Task;
 import javafx.fxml.FXML;
 import javafx.scene.control.*;
-import java.util.concurrent.*;
 
 public class ProgressViewController implements Cleanable {
 
@@ -20,7 +19,7 @@ public class ProgressViewController implements Cleanable {
     @FXML
     private TextArea logConsole;
 
-    private ScheduledExecutorService detailPoller;
+    private javafx.animation.Timeline timeline;
     private final ProgressTrackingService progressService = ProgressTrackingService.getInstance();
     private final com.example.automl_prototype_1.service.LogService.LogListener logListener = this::appendLog;
 
@@ -39,21 +38,33 @@ public class ProgressViewController implements Cleanable {
     }
 
     @FXML
+    private TextField logSearchField;
+
+    @FXML
     public void initialize() {
         // Connect to LogService
-        com.example.automl_prototype_1.service.LogService.getInstance().setListener(logListener);
+        com.example.automl_prototype_1.service.LogService.getInstance().addListener(logListener);
+
+        // Filter Listener
+        if (logSearchField != null) {
+            logSearchField.textProperty().addListener((obs, oldVal, newVal) -> refreshLogs());
+        }
 
         // This poller is now ONLY for the detailed card data
         startDetailPolling();
     }
 
     // --- Log Console Logic ---
+    private final StringBuilder fullLogHistory = new StringBuilder(); // Store everything
     private final StringBuilder pendingLogs = new StringBuilder();
     private long lastLogUpdate = 0;
 
     private void appendLog(String message) {
         synchronized (pendingLogs) {
             pendingLogs.append(message).append("\n");
+        }
+        synchronized (fullLogHistory) {
+            fullLogHistory.append(message).append("\n");
         }
 
         // Throttled UI Update (Max once per 100ms)
@@ -68,16 +79,80 @@ public class ProgressViewController implements Cleanable {
         Platform.runLater(() -> {
             synchronized (pendingLogs) {
                 if (pendingLogs.length() > 0) {
-                    logConsole.appendText(pendingLogs.toString());
+                    // Only append if matches search (optimization: if empty search, append all)
+                    String filter = (logSearchField != null) ? logSearchField.getText().toLowerCase() : "";
+
+                    if (filter.isEmpty()) {
+                        logConsole.appendText(pendingLogs.toString());
+                    } else {
+                        // Must re-filter everything if we really want consistency,
+                        // but for "Efficiency" actively appending just the new matching lines is okay
+                        // However, simplest "Hacker Mode" is: if filter exists, we might need to
+                        // re-render all from history
+                        // actually, let's just refreshLogs() if filter is active, otherwise append.
+                        refreshLogs();
+                    }
                     pendingLogs.setLength(0); // Clear buffer
                 }
             }
         });
     }
 
+    private void refreshLogs() {
+        String filter = (logSearchField != null) ? logSearchField.getText().toLowerCase() : "";
+
+        if (filter.isEmpty()) {
+            // If full history is huge, this might lag. But for <1MB logs it's fine.
+            synchronized (fullLogHistory) {
+                logConsole.setText(fullLogHistory.toString());
+                logConsole.setScrollTop(Double.MAX_VALUE);
+            }
+        } else {
+            StringBuilder filtered = new StringBuilder();
+            synchronized (fullLogHistory) {
+                String[] lines = fullLogHistory.toString().split("\\n");
+                for (String line : lines) {
+                    if (line.toLowerCase().contains(filter)) {
+                        filtered.append(line).append("\n");
+                    }
+                }
+            }
+            logConsole.setText(filtered.toString());
+            logConsole.setScrollTop(Double.MAX_VALUE);
+        }
+    }
+
+    @FXML
+    private void onCopyLogsClicked() {
+        final javafx.scene.input.Clipboard clipboard = javafx.scene.input.Clipboard.getSystemClipboard();
+        final javafx.scene.input.ClipboardContent content = new javafx.scene.input.ClipboardContent();
+        synchronized (fullLogHistory) {
+            content.putString(fullLogHistory.toString());
+        }
+        clipboard.setContent(content);
+        // Visual feedback?
+        com.example.automl_prototype_1.service.LogService.info("UI", "Logs copied to clipboard.");
+    }
+
+    @FXML
+    private void onGarbageCollectClicked() {
+        com.example.automl_prototype_1.service.TelemetryService.getInstance().triggerMemoryCleanup();
+        // Clear local history too to match backend
+        synchronized (fullLogHistory) {
+            fullLogHistory.setLength(0);
+        }
+        logConsole.clear();
+        com.example.automl_prototype_1.service.LogService.info("UI", "Local Log View Cleared.");
+    }
+
     private void startDetailPolling() {
-        detailPoller = Executors.newSingleThreadScheduledExecutor();
-        detailPoller.scheduleAtFixedRate(this::updateDetails, 0, 500, TimeUnit.MILLISECONDS);
+        if (timeline != null) {
+            timeline.stop();
+        }
+        timeline = new javafx.animation.Timeline(
+                new javafx.animation.KeyFrame(javafx.util.Duration.millis(500), event -> updateDetails()));
+        timeline.setCycleCount(javafx.animation.Animation.INDEFINITE);
+        timeline.play();
     }
 
     // ... existing updateDetails ...
@@ -127,12 +202,12 @@ public class ProgressViewController implements Cleanable {
 
     @Override
     public void cleanup() {
-        System.out.println("ProgressViewController: Shutting down detail poller.");
+        System.out.println("ProgressViewController: Stopping timeline.");
         // Detach listener to prevent memory leaks/zombie updates
-        com.example.automl_prototype_1.service.LogService.getInstance().setListener(null);
+        com.example.automl_prototype_1.service.LogService.getInstance().removeListener(logListener);
 
-        if (detailPoller != null && !detailPoller.isShutdown()) {
-            detailPoller.shutdownNow();
+        if (timeline != null) {
+            timeline.stop();
         }
     }
 }

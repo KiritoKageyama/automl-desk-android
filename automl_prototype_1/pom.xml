@@ -109,6 +109,10 @@
                     <version>${maven.compiler.plugin.version}</version>
                     <configuration>
                         <release>${maven.compiler.release}</release>
+                        <showWarnings>false</showWarnings>
+                        <compilerArgs>
+                            <arg>-Xlint:none</arg>
+                        </compilerArgs>
                     </configuration>
                 </plugin>
                 <plugin>

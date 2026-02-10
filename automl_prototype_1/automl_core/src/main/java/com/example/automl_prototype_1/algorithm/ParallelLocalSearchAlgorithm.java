@@ -56,13 +56,20 @@ public class ParallelLocalSearchAlgorithm extends AbstractFeatureSelectionAlgori
     }
 
     @Override
+    protected double getAverageFitness() {
+        // PLS is single-solution (or tracks best neighbor as current).
+        // Current fitness represents the active search point.
+        return this.currentFitness;
+    }
+
+    @Override
     protected void initialize(int numFeatures, Dataset dataset, IClassifier classifier, List<Fold> folds) {
         currentSolution = new double[numFeatures];
         for (int j = 0; j < numFeatures; j++) {
             currentSolution[j] = random.nextDouble() < 0.5 ? 0 : 1;
         }
         currentFitness = calculateFitness(currentSolution, classifier, folds);
-        System.out.println("PLS Initial Fitness: " + currentFitness);
+        com.example.automl_prototype_1.service.LogService.info("PLS", "Initial Fitness: " + currentFitness);
     }
 
     @Override
@@ -72,21 +79,30 @@ public class ParallelLocalSearchAlgorithm extends AbstractFeatureSelectionAlgori
             return;
 
         // Parallel Steepest Ascent: Evaluate ALL neighbors
-        NeighborResult bestNeighbor = IntStream.range(0, numFeatures).parallel().mapToObj(j -> {
-            double[] neighborSolution = Arrays.copyOf(currentSolution, numFeatures);
-            neighborSolution[j] = 1.0 - neighborSolution[j]; // Flip feature j
-            double fitness = calculateFitness(neighborSolution, classifier, folds);
-            return new NeighborResult(j, fitness, neighborSolution);
-        }).reduce((n1, n2) -> n1.fitness > n2.fitness ? n1 : n2)
-                .orElse(null);
+        // Parallel Steepest Ascent: Evaluate ALL neighbors
+        // Smart Parallelism
+        NeighborResult bestNeighbor = null;
+        try {
+            // Use common pool to avoid thread explosion
+            bestNeighbor = IntStream.range(0, numFeatures).parallel().mapToObj(j -> {
+                double[] neighborSolution = Arrays.copyOf(currentSolution, numFeatures);
+                neighborSolution[j] = 1.0 - neighborSolution[j]; // Flip feature j
+                double fitness = calculateFitness(neighborSolution, classifier, folds);
+                return new NeighborResult(j, fitness, neighborSolution);
+            }).reduce((n1, n2) -> n1.fitness > n2.fitness ? n1 : n2)
+                    .orElse(null);
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
 
         if (bestNeighbor != null && bestNeighbor.fitness > currentFitness) {
             currentSolution = bestNeighbor.solution;
             currentFitness = bestNeighbor.fitness;
-            System.out.println("Iteration " + (iteration + 1) + " | Improved by flipping feature "
-                    + bestNeighbor.featureIndex + ". New Fitness: " + currentFitness);
+            com.example.automl_prototype_1.service.LogService.info("PLS",
+                    "Iteration " + (iteration + 1) + " | Improved by flipping feature " + bestNeighbor.featureIndex
+                            + ". New Fitness: " + currentFitness);
         } else {
-            System.out.println("Converged at iteration " + (iteration + 1));
+            com.example.automl_prototype_1.service.LogService.info("PLS", "Converged at iteration " + (iteration + 1));
             converged = true;
         }
     }

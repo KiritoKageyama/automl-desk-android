@@ -6,7 +6,7 @@ package com.example.automl_prototype_1.service.agentic;
 public class PipelineSuggestion {
     private final String algorithmName;
     private final String classifierName;
-    private final String reasoning;
+    private String reasoning;
     private final double confidence;
     private final double empiricalScore; // New field
     private final String sotaComparison; // New field
@@ -35,6 +35,10 @@ public class PipelineSuggestion {
 
     public String getReasoning() {
         return reasoning;
+    }
+
+    public void setReasoning(String reasoning) {
+        this.reasoning = reasoning;
     }
 
     public double getConfidence() {

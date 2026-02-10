@@ -1,0 +1,67 @@
+[ {
+  "id" : "svm_scale_veto",
+  "condition" : "meta.numInstances > 20000 && (classifier.contains('Svm') || classifier.contains('SVM'))",
+  "verdict" : "VETO",
+  "reason" : "SVM has O(n^3) complexity, making it unsuitable for datasets with >20k rows due to freeze risk.",
+  "warning" : null
+}, {
+  "id" : "svm_scale_warn",
+  "condition" : "meta.numInstances > 10000 && (classifier.contains('Svm') || classifier.contains('SVM'))",
+  "verdict" : "WARN",
+  "reason" : null,
+  "warning" : "SVM training will be slow on >10k rows."
+}, {
+  "id" : "knn_dim_veto",
+  "condition" : "meta.numFeatures > 500 && (classifier.contains('Knn') || classifier.contains('KNN')) && !classifier.contains('Gpu')",
+  "verdict" : "VETO",
+  "reason" : "CPU-based KNN suffers from the Curse of Dimensionality with >500 features.",
+  "warning" : null
+}, {
+  "id" : "python_overhead",
+  "condition" : "meta.numInstances < 500 && (classifier.contains('XGBoost') || classifier.contains('CatBoost'))",
+  "verdict" : "WARN",
+  "reason" : null,
+  "warning" : "Python bridge overhead (~3s) exceeds training time for tiny data (<500 rows). Prefer Java RF."
+}, {
+  "id" : "igpso_memory",
+  "condition" : "meta.numFeatures > 50000 && algorithm == 'IGPSO'",
+  "verdict" : "VETO",
+  "reason" : "IGPSO feature masks are too large for >50k columns (RAM Limit).",
+  "warning" : null
+}, {
+  "id" : "overkill_optimizer",
+  "condition" : "meta.numInstances < 100 && meta.numFeatures < 10 && (algorithm == 'WWO' || algorithm == 'DE')",
+  "verdict" : "WARN",
+  "reason" : null,
+  "warning" : "Complex optimizer is overkill for such trivial data. Use PLS or GA."
+}, {
+  "id" : "gpu_pcie_tax",
+  "condition" : "meta.numInstances < 2000 && (classifier.contains('Gpu') || classifier.contains('GPU'))",
+  "verdict" : "WARN",
+  "reason" : null,
+  "warning" : "Dataset too small (<2k rows) for GPU. PCIe transfer time likely exceeds compute time."
+}, {
+  "id" : "gpu_oom_risk",
+  "condition" : "(meta.numInstances * meta.numFeatures) > 200000000 && (classifier.contains('Gpu') || classifier.contains('GPU'))",
+  "verdict" : "WARN",
+  "reason" : null,
+  "warning" : "Large Matrix (>200M elements). Risk of GPU OOM on consumer cards (4GB-6GB VRAM)."
+}, {
+  "id" : "system_ram_critical",
+  "condition" : "system.freeRam < 2.0 && (algorithm == 'IGPSO' || algorithm == 'BPSO')",
+  "verdict" : "VETO",
+  "reason" : "System Free RAM is critically low (<2GB). IGPSO/BPSO require significant memory for particle swarms.",
+  "warning" : null
+}, {
+  "id" : "system_no_gpu",
+  "condition" : "system.hasGpu == false && (classifier.contains('Gpu') || classifier.contains('GPU'))",
+  "verdict" : "VETO",
+  "reason" : "GPU Classifier requested but no dedicated GPU detected on system.",
+  "warning" : null
+}, {
+  "id" : "system_cpu_overload",
+  "condition" : "system.cpuLoad > 0.90",
+  "verdict" : "WARN",
+  "reason" : null,
+  "warning" : "System CPU Load is extremely high (>90%). Training may cause system unresponsiveness."
+} ]

@@ -10,9 +10,11 @@
 <?import javafx.scene.layout.VBox?>
 <?import javafx.scene.text.Font?>
 
-<BorderPane fx:controller="com.example.automl_prototype_1.controller.DashboardController"
-            xmlns:fx="http://javafx.com/fxml/1" prefWidth="1280" prefHeight="850"
-            styleClass="root">
+<StackPane fx:controller="com.example.automl_prototype_1.controller.DashboardController"
+           xmlns:fx="http://javafx.com/fxml/1" prefWidth="1280" prefHeight="850"
+           styleClass="root">
+
+    <BorderPane>
 
     <!-- LEFT: Modern Sidebar Navigation -->
     <left>
@@ -57,7 +59,8 @@
                     <Label fx:id="datasetLabel" text="No dataset selected" styleClass="sub-header-label" style="-fx-font-size: 12px; -fx-opacity: 0.8;"/>
                 </VBox>
                 <Region HBox.hgrow="ALWAYS"/>
-                <!-- Placeholder for User Profile or Theme Toggle -->
+                <!-- Resource Status Indicator -->
+                <Label fx:id="resourceStatusLabel" text="Checking Resources..." styleClass="sub-header-label" style="-fx-font-size: 11px; -fx-padding: 5 10 5 10; -fx-background-radius: 4; -fx-background-color: #eee; -fx-text-fill: #555;"/>
                 <Button text="Help" styleClass="button"/>
             </HBox>
 
@@ -68,4 +71,17 @@
         </VBox>
     </center>
 
-</BorderPane>
+    </BorderPane>
+
+    <!-- Floating Chat Overlay -->
+    <VBox alignment="BOTTOM_RIGHT" pickOnBounds="false" spacing="10">
+        <padding><Insets bottom="20" right="20"/></padding>
+        
+        <!-- The Chat View Container -->
+        <StackPane fx:id="chatContainer" visible="false" alignment="BOTTOM_RIGHT"/>
+
+        <!-- Toggle Button -->
+        <Button fx:id="chatToggleBtn" text="💬 AI Chat" styleClass="button-accent" style="-fx-font-weight: bold; -fx-padding: 10 20; -fx-background-radius: 20; -fx-effect: dropshadow(three-pass-box, rgba(0,0,0,0.2), 5, 0, 0, 2);"/>
+    </VBox>
+
+</StackPane>

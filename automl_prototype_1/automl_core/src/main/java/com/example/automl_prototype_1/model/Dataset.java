@@ -17,7 +17,16 @@ public class Dataset {
     // Core data storage - Primitive arrays for efficiency
     private final double[][] features;
     private final int[] labels; // Can be null if no target is set yet or for inference
-    private final String targetColumnName;
+    private String targetColumnName;
+
+    public enum DataType {
+        TABULAR,
+        IMAGE,
+        TEXT,
+        TIME_SERIES
+    }
+
+    private final DataType dataType;
 
     /**
      * Constructor for the Dataset.
@@ -34,6 +43,7 @@ public class Dataset {
         this.features = features;
         this.labels = labels;
         this.targetColumnName = targetColumnName;
+        this.dataType = DataType.TABULAR; // Default
     }
 
     /**
@@ -49,6 +59,7 @@ public class Dataset {
         this.headers = (headers != null) ? new ArrayList<>(headers) : new ArrayList<>();
         this.targetColumnName = null;
         this.labels = null;
+        this.dataType = DataType.TABULAR; // Default for legacy constructor
 
         if (records == null || records.isEmpty()) {
             this.features = new double[0][0];
@@ -65,7 +76,7 @@ public class Dataset {
                     try {
                         this.features[i][j] = Double.parseDouble(valStr);
                     } catch (NumberFormatException | NullPointerException e) {
-                        this.features[i][j] = 0.0; // Handle missing/invalid as 0.0 for now
+                        this.features[i][j] = Double.NaN; // Use NaN for missing/invalid to allow proper imputation
                     }
                 }
             }
@@ -98,8 +109,16 @@ public class Dataset {
         return labels;
     }
 
+    public DataType getDataType() {
+        return dataType;
+    }
+
     public String getTargetColumnName() {
         return targetColumnName;
+    }
+
+    public void setTargetColumnName(String targetColumnName) {
+        this.targetColumnName = targetColumnName;
     }
 
     /**
@@ -192,14 +211,28 @@ public class Dataset {
      * x' = (x - mean) / std_dev
      * Handles constant columns by setting them to 0.
      */
+    /**
+     * Standardizes the features (Z-score scaling) in-place.
+     * x' = (x - mean) / std_dev
+     * Handles constant columns by setting them to 0.
+     * Skips the target column if specified.
+     */
     public void standardize() {
+        standardize(this.targetColumnName);
+    }
+
+    public void standardize(String excludeColumnName) {
         if (features == null || features.length == 0)
             return;
 
         int numRows = features.length;
         int numCols = features[0].length;
+        int excludeIndex = (excludeColumnName != null) ? headers.indexOf(excludeColumnName) : -1;
 
         for (int j = 0; j < numCols; j++) {
+            if (j == excludeIndex)
+                continue; // Skip target column
+
             // 1. Calculate Mean
             double sum = 0.0;
             for (int i = 0; i < numRows; i++) {
@@ -224,7 +257,94 @@ public class Dataset {
                 }
             }
         }
-        System.out.println("Dataset standardized (Z-Score scaling applied).");
+        System.out.println("Dataset standardized (Z-Score scaling applied, skipped: " + excludeColumnName + ").");
+    }
+
+    /**
+     * Normalizes the features (Min-Max scaling) in-place.
+     * x' = (x - min) / (max - min)
+     * Rescales features to range [0, 1].
+     */
+    public void normalize() {
+        normalize(this.targetColumnName);
+    }
+
+    public void normalize(String excludeColumnName) {
+        if (features == null || features.length == 0)
+            return;
+
+        int numRows = features.length;
+        int numCols = features[0].length;
+        int excludeIndex = (excludeColumnName != null) ? headers.indexOf(excludeColumnName) : -1;
+
+        for (int j = 0; j < numCols; j++) {
+            if (j == excludeIndex)
+                continue; // Skip target column
+
+            // 1. Find Min/Max
+            double min = Double.MAX_VALUE;
+            double max = -Double.MAX_VALUE;
+            for (int i = 0; i < numRows; i++) {
+                double val = features[i][j];
+                if (val < min)
+                    min = val;
+                if (val > max)
+                    max = val;
+            }
+
+            // 2. Apply Transformation
+            double range = max - min;
+            for (int i = 0; i < numRows; i++) {
+                if (range > 1e-9) {
+                    features[i][j] = (features[i][j] - min) / range;
+                } else {
+                    features[i][j] = 0.0; // Constant column
+                }
+            }
+        }
+        System.out.println("Dataset normalized (Min-Max scaling applied, skipped: " + excludeColumnName + ").");
+    }
+
+    /**
+     * Imputes missing values (NaN) with the mean of the column.
+     * Skips the target column if specified.
+     */
+    public void impute() {
+        impute(this.targetColumnName);
+    }
+
+    public void impute(String excludeColumnName) {
+        if (features == null || features.length == 0)
+            return;
+
+        int numRows = features.length;
+        int numCols = features[0].length;
+        int excludeIndex = (excludeColumnName != null) ? headers.indexOf(excludeColumnName) : -1;
+
+        for (int j = 0; j < numCols; j++) {
+            if (j == excludeIndex)
+                continue;
+
+            // 1. Calculate Mean (ignoring NaNs)
+            double sum = 0.0;
+            int count = 0;
+            for (int i = 0; i < numRows; i++) {
+                if (!Double.isNaN(features[i][j])) {
+                    sum += features[i][j];
+                    count++;
+                }
+            }
+
+            double mean = (count > 0) ? sum / count : 0.0; // Default to 0 if all NaN
+
+            // 2. Replace NaNs
+            for (int i = 0; i < numRows; i++) {
+                if (Double.isNaN(features[i][j])) {
+                    features[i][j] = mean;
+                }
+            }
+        }
+        System.out.println("Dataset imputed (Mean substitution applied, skipped: " + excludeColumnName + ").");
     }
 
     /**
@@ -254,5 +374,40 @@ public class Dataset {
             records.add(record);
         }
         return records;
+    }
+
+    /**
+     * Get the first N rows of features.
+     * 
+     * @param limit Number of rows to return.
+     * @return double[][] subset.
+     */
+    public double[][] getFeatures(int limit) {
+        if (features == null)
+            return new double[0][0];
+        int rows = Math.min(limit, features.length);
+        int cols = features[0].length;
+        double[][] subset = new double[rows][cols];
+        for (int i = 0; i < rows; i++) {
+            System.arraycopy(features[i], 0, subset[i], 0, cols);
+        }
+        return subset;
+    }
+
+    /**
+     * Get the number of unique labels in the specified target column.
+     * 
+     * @param targetCol Name of the target column.
+     * @return count of unique values.
+     */
+    public int getUniqueLabelCount(String targetCol) {
+        int[] y = getLabelVector(targetCol);
+        if (y.length == 0)
+            return 0;
+
+        java.util.Set<Integer> unique = new java.util.HashSet<>();
+        for (int val : y)
+            unique.add(val);
+        return unique.size();
     }
 }

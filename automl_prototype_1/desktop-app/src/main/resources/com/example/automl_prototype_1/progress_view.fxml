@@ -37,7 +37,13 @@
         <Label fx:id="etaLabel" styleClass="stat-subtitle-label" text="Calculating..." GridPane.rowIndex="6" GridPane.columnIndex="1"/>
     </GridPane>
     <VBox spacing="10" alignment="CENTER_LEFT" VBox.vgrow="ALWAYS">
-        <Label styleClass="sub-header-label" text="Live Execution Logs (Hacker Mode)"/>
+        <HBox spacing="10" alignment="CENTER_LEFT">
+            <Label styleClass="sub-header-label" text="Live Execution Logs (Hacker Mode)"/>
+            <Region HBox.hgrow="ALWAYS"/>
+            <TextField fx:id="logSearchField" promptText="Search logs..." prefWidth="200"/>
+            <Button text="Copy Logs" onAction="#onCopyLogsClicked"/>
+            <Button text="Clear Memory" onAction="#onGarbageCollectClicked" style="-fx-background-color: #ef4444; -fx-text-fill: white;"/>
+        </HBox>
         <TextArea fx:id="logConsole" editable="false" wrapText="true" 
                   style="-fx-font-family: 'Consolas', 'Monospace'; -fx-control-inner-background: #1a1a1a; -fx-text-fill: #00ff00;" 
                   VBox.vgrow="ALWAYS"/>

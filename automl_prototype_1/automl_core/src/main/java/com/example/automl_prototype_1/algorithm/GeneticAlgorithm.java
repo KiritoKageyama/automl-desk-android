@@ -2,6 +2,7 @@ package com.example.automl_prototype_1.algorithm;
 
 import com.example.automl_prototype_1.model.Dataset;
 import com.example.automl_prototype_1.service.IClassifier;
+import com.example.automl_prototype_1.service.LogService;
 import java.util.*;
 import java.util.concurrent.ThreadLocalRandom;
 
@@ -21,21 +22,50 @@ public class GeneticAlgorithm extends AbstractFeatureSelectionAlgorithm {
 
     public GeneticAlgorithm(int populationSize, int maxIterations, int kFolds, int patience) {
         super(kFolds, patience);
-        this.populationSize = populationSize;
+
+        // Default values
+        double tempCrossover = 0.8;
+        double tempMutation = 0.05;
+        int tempPopSize = populationSize;
+
+        // Check for Advanced Mode Overrides
+        try {
+            com.example.automl_prototype_1.service.AppStateService appState = com.example.automl_prototype_1.service.AppStateService
+                    .getInstance();
+            if (appState.isAdvancedMode()) {
+                Double confCrossover = appState.getAlgorithmHyperparameter("GA", "crossoverRate");
+                Double confMutation = appState.getAlgorithmHyperparameter("GA", "mutationRate");
+                Double confPop = appState.getAlgorithmHyperparameter("GA", "populationSize");
+
+                if (confCrossover != null)
+                    tempCrossover = confCrossover;
+                if (confMutation != null)
+                    tempMutation = confMutation;
+                if (confPop != null)
+                    tempPopSize = confPop.intValue();
+
+                LogService.info("GA", String.format("Initialized with Advanced Params: Pop=%d, Cross=%.2f, Mut=%.2f",
+                        tempPopSize, tempCrossover, tempMutation));
+            }
+        } catch (NoClassDefFoundError | Exception e) {
+            // Fallback for standalone tests without AppState
+        }
+
+        this.populationSize = tempPopSize;
         this.maxGenerations = maxIterations;
-        this.crossoverRate = 0.8;
-        this.mutationRate = 0.05;
-        this.currentMutationRate = this.mutationRate; // Initialize custom rate
+        this.crossoverRate = tempCrossover;
+        this.mutationRate = tempMutation;
+        this.currentMutationRate = this.mutationRate;
         this.tournamentSize = 5;
         this.elitism = true;
     }
 
     public GeneticAlgorithm(int populationSize, int maxIterations) {
-        this(populationSize, maxIterations, 5, 20);
+        this(populationSize, maxIterations, 5, Math.max(10, maxIterations / 5));
     }
 
     public GeneticAlgorithm() {
-        this(30, 100);
+        this(20, 50); // Optimized for speed: 20 pop, 50 gens
     }
 
     @Override
@@ -45,7 +75,7 @@ public class GeneticAlgorithm extends AbstractFeatureSelectionAlgorithm {
 
     @Override
     protected int getMaxIterations() {
-        return this.maxGenerations;
+        return (manualMaxIterations > 0) ? manualMaxIterations : this.maxGenerations;
     }
 
     @Override
@@ -59,14 +89,31 @@ public class GeneticAlgorithm extends AbstractFeatureSelectionAlgorithm {
     }
 
     @Override
+    protected double getAverageFitness() {
+        if (population == null || population.isEmpty())
+            return 0.0;
+        double sum = 0.0;
+        int count = 0;
+        for (Solution s : population) {
+            // Check for valid fitness
+            if (s.fitness != Double.NEGATIVE_INFINITY) {
+                sum += s.fitness;
+                count++;
+            }
+        }
+        return count > 0 ? sum / count : 0.0;
+    }
+
+    @Override
     protected void initialize(int numFeatures, Dataset dataset, IClassifier classifier, List<Fold> folds) {
+        // Parent handles cache clearing
         this.population = new ArrayList<>(populationSize);
         for (int i = 0; i < populationSize; i++) {
             population.add(new Solution(numFeatures));
         }
         evaluatePopulation(classifier, folds);
         this.bestOverallSolution = findBestInPopulation();
-        System.out.printf("GA Initial Best Fitness = %.4f%n", this.bestOverallSolution.fitness);
+        LogService.info("GA", String.format("Initial Best Fitness = %.4f", this.bestOverallSolution.fitness));
     }
 
     @Override
@@ -77,20 +124,44 @@ public class GeneticAlgorithm extends AbstractFeatureSelectionAlgorithm {
             nextPopulation.add(new Solution(bestOverallSolution));
         }
 
-        while (nextPopulation.size() < populationSize) {
-            Solution parent1 = tournamentSelection();
-            Solution parent2 = tournamentSelection();
-            Solution child1 = new Solution(parent1);
-            Solution child2 = new Solution(parent2);
-            if (random.nextDouble() < crossoverRate) {
-                performCrossover(child1, child2);
+        // Parallel Population Generation
+        int optimalThreads = com.example.automl_prototype_1.service.HardwareAcceleratorService
+                .calculateOptimalThreadCount();
+        @SuppressWarnings("resource")
+        java.util.concurrent.ForkJoinPool customThreadPool = new java.util.concurrent.ForkJoinPool(optimalThreads);
+
+        try {
+            // Generate offpsring in parallel
+            // We need to generate (populationSize - existing) new solutions
+            int needed = populationSize - nextPopulation.size();
+
+            if (needed > 0) {
+                List<Solution> offsprings = customThreadPool
+                        .submit(() -> java.util.stream.IntStream.range(0, needed / 2 + 1) // Each iter produces 2
+                                                                                          // children
+                                .parallel()
+                                .mapToObj(i -> {
+                                    Solution parent1 = tournamentSelection();
+                                    Solution parent2 = tournamentSelection();
+                                    Solution child1 = new Solution(parent1);
+                                    Solution child2 = new Solution(parent2);
+                                    if (ThreadLocalRandom.current().nextDouble() < crossoverRate) {
+                                        performCrossover(child1, child2);
+                                    }
+                                    mutate(child1);
+                                    mutate(child2);
+                                    return List.of(child1, child2);
+                                })
+                                .flatMap(List::stream)
+                                .limit(needed)
+                                .toList())
+                        .get();
+                nextPopulation.addAll(offsprings);
             }
-            mutate(child1);
-            mutate(child2);
-            if (nextPopulation.size() < populationSize)
-                nextPopulation.add(child1);
-            if (nextPopulation.size() < populationSize)
-                nextPopulation.add(child2);
+        } catch (Exception e) {
+            e.printStackTrace();
+        } finally {
+            customThreadPool.shutdown();
         }
 
         this.population = nextPopulation;
@@ -112,24 +183,38 @@ public class GeneticAlgorithm extends AbstractFeatureSelectionAlgorithm {
                 this.currentMutationRate = Math.min(0.3, this.currentMutationRate * 1.5);
 
                 // Log only on changes or periodically
-                if (Math.abs(oldRate - this.currentMutationRate) > 0.001 || this.stagnationCounter % 5 == 0) {
-                    System.out.printf("GA: Stagnation detected (%d gens). Boosting mutation to %.3f%n",
-                            stagnationCounter,
-                            currentMutationRate);
+                if (Math.abs(oldRate - this.currentMutationRate) > 0.001 || this.stagnationCounter % 20 == 0) {
+                    LogService.info("GA", String.format("Stagnation detected (%d gens). Boosting mutation to %.3f",
+                            stagnationCounter, currentMutationRate));
                 }
             }
         }
 
         if ((iteration + 1) % 10 == 0 || iteration == 0 || iteration == maxGenerations - 1) {
-            System.out.printf("GA Gen %d/%d: Best Fitness = %.4f (Mut: %.2f)%n", iteration + 1, maxGenerations,
-                    this.bestOverallSolution.fitness, this.currentMutationRate);
+            LogService.info("GA", String.format("Gen %d/%d: Best Fitness = %.4f (Mut: %.2f)", iteration + 1,
+                    maxGenerations, this.bestOverallSolution.fitness, this.currentMutationRate));
         }
     }
 
-    // --- NEW evaluatePopulation that accepts folds ---
+    // --- Batched evaluatePopulation ---
     private void evaluatePopulation(IClassifier classifier, List<Fold> folds) {
-        this.population.parallelStream()
-                .forEach(sol -> sol.fitness = calculateFitness(sol.chromosome, classifier, folds));
+        try {
+            List<double[]> chromosomes = this.population.stream()
+                    .map(s -> s.chromosome)
+                    .collect(java.util.stream.Collectors.toList());
+
+            List<Double> fitnessValues = evaluatePopulationBatched(chromosomes, classifier, folds);
+
+            for (int i = 0; i < population.size(); i++) {
+                population.get(i).fitness = fitnessValues.get(i);
+            }
+        } catch (Exception e) {
+            LogService.error("GA", "Evaluation failed: " + e.getMessage());
+            // Fallback (though evaluatePopulationBatched has internal fallback, this
+            // catches other errors)
+            this.population.stream()
+                    .forEach(sol -> sol.fitness = calculateFitness(sol.chromosome, classifier, folds));
+        }
     }
 
     private Solution findBestInPopulation() {

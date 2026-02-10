@@ -1,10 +1,23 @@
 package com.example.automl_prototype_1.service;
 
-import com.example.automl_prototype_1.algorithm.*;
+import com.example.automl_prototype_1.algorithm.AblationAwareGeneticAlgorithm;
+import com.example.automl_prototype_1.algorithm.AtomSearchOptimization;
+import com.example.automl_prototype_1.algorithm.BinaryParticleSwarmOptimization;
+import com.example.automl_prototype_1.algorithm.DifferentialEvolution;
+import com.example.automl_prototype_1.algorithm.GeneticAlgorithm;
+import com.example.automl_prototype_1.algorithm.GreyWolfOptimizer;
+import com.example.automl_prototype_1.algorithm.IGPSO;
+import com.example.automl_prototype_1.algorithm.OptimizationAlgorithm;
+import com.example.automl_prototype_1.algorithm.NoOptimizationAlgorithm;
+import com.example.automl_prototype_1.algorithm.ParallelLocalSearchAlgorithm;
+import com.example.automl_prototype_1.algorithm.SimulatedAnnealing;
+import com.example.automl_prototype_1.algorithm.WaterWaveOptimization;
 import com.example.automl_prototype_1.model.AlgorithmRecommendation;
 import com.example.automl_prototype_1.model.Dataset;
 import com.example.automl_prototype_1.model.ExecutionResult;
-import com.example.automl_prototype_1.classifier.*;
+import com.example.automl_prototype_1.classifier.KnnClassifier;
+// GpuKnnClassifier and GpuLogisticRegression are used FQCN in code, so imports removed.
+// Services in same package (com.example.automl_prototype_1.service) do not need imports.
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -20,12 +33,21 @@ public class ExecutionService {
 
     private final RecommendationService recommendationService;
 
+    private static ExecutionService instance;
+
     /**
      * Constructor initializes the new services.
      */
     public ExecutionService() {
         this.recommendationService = new RecommendationService();
         LogService.info("CORE", "ExecutionService Initialized.");
+    }
+
+    public static synchronized ExecutionService getInstance() {
+        if (instance == null) {
+            instance = new ExecutionService();
+        }
+        return instance;
     }
 
     /**
@@ -39,6 +61,17 @@ public class ExecutionService {
      *                               key "classifier".
      * @return A List containing ExecutionResult objects.
      */
+    private java.util.concurrent.ExecutorService executor;
+
+    public void stop() {
+        LogService.info("CORE", "STOP Requested. Terminating processes...");
+        if (executor != null && !executor.isShutdown()) {
+            executor.shutdownNow();
+        }
+        PythonExecutionService.getInstance().terminateAll();
+        LogService.error("CORE", "=== EXECUTION FORCEFULLY STOPPED BY USER ===");
+    }
+
     public List<ExecutionResult> executeAlgorithms(Dataset dataset,
             List<String> selectedAlgorithmNames,
             Map<String, Object> configuration) throws Exception {
@@ -62,10 +95,24 @@ public class ExecutionService {
             LogService.info("CORE", "No GPU detected. Using CPU for all tasks.");
         }
 
-        // Apply Scaling
-        if (AppStateService.getInstance().isStandardizationEnabled()) {
-            LogService.info("CORE", "Applying Standardization (Z-Score) to Dataset...");
-            dataset.standardize();
+        // --- Phase 3: Pipeline Control (Scaling) ---
+        String scaling = AppStateService.getInstance().getScalingStrategy();
+        LogService.info("CORE", "Scaling Strategy: " + scaling + " (delegated to algorithm execution)");
+
+        if (configuration == null) {
+            configuration = new HashMap<>();
+        }
+        configuration.put("scaling", scaling);
+        configuration.put("imputation", AppStateService.getInstance().getPreprocessingConfig().isImputeMissingValues());
+
+        // --- Phase 3: Feature Selection Bypass ---
+        boolean fsEnabled = AppStateService.getInstance().isFeatureSelectionEnabled();
+        List<String> finalAlgorithms = new ArrayList<>(selectedAlgorithmNames);
+
+        if (!fsEnabled) {
+            LogService.info("CORE", "Feature Selection DISABLED. Forcing 'No Optimization' pass-through.");
+            finalAlgorithms.clear();
+            finalAlgorithms.add("No Optimization (Full Feature Set)");
         }
 
         if (configuration == null || !(configuration.get("classifier") instanceof IClassifier)) {
@@ -75,17 +122,21 @@ public class ExecutionService {
         }
         IClassifier classifier = (IClassifier) configuration.get("classifier");
 
-        LogService.info("CORE", "Starting PARALLEL execution of " + selectedAlgorithmNames.size()
+        LogService.info("CORE", "Starting PARALLEL execution of " + finalAlgorithms.size()
                 + " algorithms with classifier: " + classifier.getName());
 
         // Create a Thread Pool for parallel execution of algorithms
-        java.util.concurrent.ExecutorService executor = java.util.concurrent.Executors.newCachedThreadPool();
+        this.executor = java.util.concurrent.Executors.newCachedThreadPool();
         List<java.util.concurrent.Future<ExecutionResult>> futures = new ArrayList<>();
         // final IClassifier finalClassifier = classifier; // Unused
         final Map<String, Object> finalConfig = configuration;
 
-        for (String algoName : selectedAlgorithmNames) {
+        for (String algoName : finalAlgorithms) {
             futures.add(executor.submit(() -> {
+                if (Thread.currentThread().isInterrupted())
+                    return null;
+                // long threadId = Thread.currentThread().getId();
+                @SuppressWarnings("deprecation")
                 long threadId = Thread.currentThread().getId();
                 String resourceType = (finalConfig
                         .get("classifier") instanceof com.example.automl_prototype_1.classifier.GpuKnnClassifier ||
@@ -111,7 +162,16 @@ public class ExecutionService {
         List<ExecutionResult> allResults = new ArrayList<>();
         for (java.util.concurrent.Future<ExecutionResult> future : futures) {
             try {
-                allResults.add(future.get()); // Wait for completion
+                // Global safety timeout: 3 hours per algorithm (generous, but prevents eternal
+                // dev hangs)
+                ExecutionResult res = future.get(3, java.util.concurrent.TimeUnit.HOURS);
+                if (res != null)
+                    allResults.add(res);
+            } catch (java.util.concurrent.CancellationException ce) {
+                LogService.info("CORE", "Task cancelled.");
+            } catch (java.util.concurrent.TimeoutException te) {
+                LogService.error("CORE", "Algorithm execution timed out (3 hours). cancelling...");
+                future.cancel(true);
             } catch (Exception e) {
                 LogService.error("CORE", "Error retrieving future result: " + e.getMessage());
             }
@@ -189,8 +249,125 @@ public class ExecutionService {
             return new GreyWolfOptimizer();
         if ("DE".equalsIgnoreCase(name) || "Differential Evolution".equalsIgnoreCase(name))
             return new DifferentialEvolution();
+        if ("Ablation GA".equalsIgnoreCase(name))
+            return new AblationAwareGeneticAlgorithm(50, 100);
+        if (name.contains("No Optimization") || name.contains("Full Feature Set"))
+            return new NoOptimizationAlgorithm();
 
         LogService.error("ExecutionService", "No implementation found for algorithm name '" + name + "'");
         return null;
+    }
+
+    /**
+     * Retrains the best model on the FULL dataset using the selected features and
+     * global settings.
+     * This step is crucial for generating a deployable model (ONNX).
+     */
+    public void refitBestModel(ExecutionResult result, IClassifier classifier, Dataset dataset) {
+        if (result.getFeatureIndices() == null) {
+            LogService.warn("ExecutionService", "Cannot refit model: No feature indices found in result.");
+            return;
+        }
+
+        LogService.info("CORE", "Refitting Final Model on Full Dataset (100% data) for Export...");
+
+        // 1. Prepare Global Config (Enable Scaling/Imputation for Final Model)
+        com.example.automl_prototype_1.model.PreprocessingConfig config = AppStateService.getInstance()
+                .getPreprocessingConfig();
+        // Force scaling/imputation to be active as per global settings
+        // Dashboard disabled them for CV, but here we want them.
+
+        // 2. Run Preprocessing (Clean, Impute, Scale)
+        com.example.automl_prototype_1.service.PreprocessorService preprocessor = new com.example.automl_prototype_1.service.PreprocessorService();
+        String targetCol = dataset.getTargetColumnName();
+        Dataset cleanData = preprocessor.runPreprocessingPipeline(dataset, targetCol, config);
+
+        // 3. Filter Features
+        double[][] X = cleanData.getFeatures();
+        int[] y = cleanData.getLabelVector(); // Assuming labels are preserved
+        if (y == null) {
+            LogService.error("CORE", "Cannot refit: No labels found in processed dataset.");
+            return;
+        }
+
+        int[] indices = result.getFeatureIndices();
+        // Validate indices
+        int maxIndex = 0;
+        for (int idx : indices)
+            maxIndex = Math.max(maxIndex, idx);
+
+        if (maxIndex >= X[0].length) {
+            LogService.error("CORE", "Feature Indices out of bounds. Max: " + maxIndex + ", Cols: " + X[0].length);
+            // Verify if preprocessing removed columns (e.g. ID removal)
+            // Indices come from Algorithm which used Preprocessed folds?
+            // AbstractFeatureSelectionAlgorithm used Folds created from RAW data.
+            // Wait. createStratifiedFolds creates folds from provided features.
+            // Optimize calls 'dataset.getFeatureMatrix(TARGET)'.
+            // Does 'runPreprocessingPipeline' modify column counts (e.g. remove ID)?
+            // YES. 'autoRemoveIdColumns'.
+            // So if Validation used logic that skipped ID columns...
+            // AbstractFeatureSelectionAlgorithm receives 'dataset'.
+            // In 'executeAlgorithms', dataset is PASSED IN.
+            // In DashboardController, 'finalDataset' is passed to 'executeAlgorithms'.
+            // 'finalDataset' is the result of 'runPreprocessingPipeline(safeConfig)'.
+            // 'safeConfig' has 'autoRemoveIdColumns(true)' (inherited from config).
+            // So 'finalDataset' HAS NO IDs.
+            // 'indices' are based on 'finalDataset'.
+            // HERE in 'refitBestModel', we act on 'dataset' (the ORIGINAL raw one passed
+            // from Dashboard?).
+            // NO. `refitBestModel` receives `dataset`.
+            // If Dashboard passes the SAME `finalDataset` (already preprocessed safely),
+            // then we shouldn't run preprocessor again on it?
+            // OR Dashboard passes `rawDataset`?
+
+            // If Dashboard passes `finalDataset` (No IDs, Raw Values, NaN preserved),
+            // Then we just need to Apply Impute/Scale.
+            // We should NOT run 'autoRemoveIdColumns' again if they are already gone.
+            // BUT `runPreprocessingPipeline` might fail if IDs are missing? No.
+
+            // Safer Check: If `DashboardController` calls this with the `finalDataset` used
+            // for CV,
+            // Then we are good on column alignment.
+            // But we need to Apply Impute/Scale.
+
+            // Modification: `runPreprocessingPipeline` applies ALL steps in config.
+            // If we pass `finalDataset` (which has ID removed), and Config says
+            // `removeID=true`,
+            // Preprocessor checks heuristic. If no ID found, it does nothing. Safe.
+
+            // The main issue: Impute/Scale.
+            // `cleanData` will be Imputed & Scaled.
+        }
+
+        double[][] selectedX = new double[X.length][indices.length];
+
+        for (int i = 0; i < X.length; i++) {
+            for (int k = 0; k < indices.length; k++) {
+                int colIdx = indices[k];
+                if (colIdx < X[0].length) {
+                    selectedX[i][k] = X[i][colIdx];
+                } else {
+                    selectedX[i][k] = 0.0; // Fallback
+                }
+            }
+        }
+
+        // 4. Train Classifier
+        LogService.info("CORE", "Training " + classifier.getName() + " on " + X.length + " samples...");
+        classifier.train(selectedX, y);
+
+        // 5. Extract ONNX Path
+        if (classifier instanceof com.example.automl_prototype_1.classifier.GpuRandomForestClassifier) {
+            String path = ((com.example.automl_prototype_1.classifier.GpuRandomForestClassifier) classifier)
+                    .getOnnxModelPath();
+            if (path != null) {
+                result.setOnnxModelPath(path);
+                LogService.info("CORE", "ONNX Model Exported: " + path);
+            }
+        } else {
+            // Future support for other GPU classifiers
+            // if (classifier instanceof
+            // com.example.automl_prototype_1.classifier.GpuSvmClassifier) ...
+        }
     }
 }

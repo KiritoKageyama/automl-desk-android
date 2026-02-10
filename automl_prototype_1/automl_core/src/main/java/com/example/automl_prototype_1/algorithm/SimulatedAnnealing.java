@@ -2,6 +2,7 @@ package com.example.automl_prototype_1.algorithm;
 
 import com.example.automl_prototype_1.model.Dataset;
 import com.example.automl_prototype_1.service.IClassifier;
+import com.example.automl_prototype_1.service.LogService;
 import java.util.Arrays;
 import java.util.List;
 
@@ -56,6 +57,13 @@ public class SimulatedAnnealing extends AbstractFeatureSelectionAlgorithm {
     }
 
     @Override
+    protected double getAverageFitness() {
+        // SA is single-solution. Current fitness represents the active search point.
+        // This will fluctuate while Best Fitness stays monotonic.
+        return this.currentFitness;
+    }
+
+    @Override
     protected void initialize(int numFeatures, Dataset dataset, IClassifier classifier, List<Fold> folds) {
         // 1. Create a single random starting solution
         this.currentSolution = new double[numFeatures];
@@ -71,7 +79,7 @@ public class SimulatedAnnealing extends AbstractFeatureSelectionAlgorithm {
         // 3. Initialize the temperature
         this.temperature = this.initialTemperature;
 
-        System.out.printf("SA Initial Best Fitness: %.4f%n", this.bestFitness);
+        LogService.info("SA", String.format("Initial Best Fitness: %.4f", this.bestFitness));
     }
 
     @Override
@@ -120,15 +128,22 @@ public class SimulatedAnnealing extends AbstractFeatureSelectionAlgorithm {
         double temp = initialTemperature / (1 + Math.log(1 + iteration));
 
         // Parallel Neighbor Generation & Evaluation
-        List<NeighborResult> results = java.util.stream.IntStream.range(0, numNeighbors).parallel().mapToObj(i -> {
-            var rand = java.util.concurrent.ThreadLocalRandom.current();
-            double[] neighbor = java.util.Arrays.copyOf(currentSolution, numFeatures);
-            int flipIndex = rand.nextInt(numFeatures);
-            neighbor[flipIndex] = 1.0 - neighbor[flipIndex];
+        // Smart Parallelism
+        List<NeighborResult> results = new java.util.ArrayList<>();
+        try {
+            results = this.executorService
+                    .submit(() -> java.util.stream.IntStream.range(0, numNeighbors).parallel().mapToObj(i -> {
+                        var rand = java.util.concurrent.ThreadLocalRandom.current();
+                        double[] neighbor = java.util.Arrays.copyOf(currentSolution, numFeatures);
+                        int flipIndex = rand.nextInt(numFeatures);
+                        neighbor[flipIndex] = 1.0 - neighbor[flipIndex];
 
-            double fitness = calculateFitness(neighbor, classifier, folds);
-            return new NeighborResult(fitness, neighbor);
-        }).toList();
+                        double fitness = calculateFitness(neighbor, classifier, folds);
+                        return new NeighborResult(fitness, neighbor);
+                    }).toList()).get();
+        } catch (Exception e) {
+            LogService.error("SA", "Error in parallel neighborhood search: " + e.getMessage());
+        }
 
         // Select best neighbor (Greedy or Metropolis?)
         // Standard SA: Evaluate one, accept/reject.
@@ -144,7 +159,7 @@ public class SimulatedAnnealing extends AbstractFeatureSelectionAlgorithm {
             if (delta > 0) {
                 currentSolution = bestOfBatch.solution;
                 currentFitness = bestOfBatch.fitness;
-                System.out.println("Iteration " + (iteration + 1) + " | Improved: " + currentFitness);
+                LogService.info("SA", "Iteration " + (iteration + 1) + " | Improved: " + currentFitness);
             } else {
                 if (Math.exp(delta / temp) > java.util.concurrent.ThreadLocalRandom.current().nextDouble()) {
                     currentSolution = bestOfBatch.solution;
@@ -163,9 +178,10 @@ public class SimulatedAnnealing extends AbstractFeatureSelectionAlgorithm {
         // 5. Cool the temperature
         this.temperature *= this.coolingRate;
 
-        if (iteration % 50 == 0) { // Print progress periodically
-            System.out.printf("SA Iteration %d | Temp: %.3f | Current Fitness: %.4f | Best Fitness: %.4f%n",
-                    iteration, this.temperature, this.currentFitness, this.bestFitness);
+        if (iteration % 50 == 0 || iteration == 0 || iteration == maxIterations - 1) { // Print progress periodically
+            LogService.info("SA",
+                    String.format("Iteration %d | Temp: %.3f | Current Fitness: %.4f | Best Fitness: %.4f",
+                            iteration, this.temperature, this.currentFitness, this.bestFitness));
         }
     }
 }

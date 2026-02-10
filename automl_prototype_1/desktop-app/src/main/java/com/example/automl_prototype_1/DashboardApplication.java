@@ -27,7 +27,28 @@ public class DashboardApplication extends Application {
 
     @Override
     public void start(Stage stage) throws Exception {
-        System.out.println("CORE: STARTING APP - FORCE-REBUILD-v2 - IF YOU SEE THIS, IT IS NEW CODE");
+        // Application Startup
+
+        // --- Phase 6, Step 2: Background Resource Pre-Warming ---
+        // Initializes GPU/Python/CUDA in background to prevent "First Run Freeze"
+        java.util.concurrent.CompletableFuture.runAsync(() -> {
+            System.out.println("🔥🔥 [PRE-WARM] Background Resource Initialization Started... 🔥🔥");
+            try {
+                long start = System.currentTimeMillis();
+
+                // 1. Init Hardware Service (Checks CUDA/OpenCL)
+                com.example.automl_prototype_1.service.HardwareAcceleratorService.isGpuAvailable();
+
+                // 2. Init GPU Batch Service (Spawns Python Process)
+                com.example.automl_prototype_1.service.GpuBatchService.getInstance();
+
+                System.out.println(
+                        "🔥🔥 [PRE-WARM] Resources Ready in " + (System.currentTimeMillis() - start) + "ms 🔥🔥");
+            } catch (Exception e) {
+                System.err.println("❌ [PRE-WARM] Background Initialization Failed (Non-Critical): " + e.getMessage());
+            }
+        });
+
         // --- Clean Architecture: Instantiate Service ---
         com.example.automl_prototype_1.service.AppStateService appStateService = com.example.automl_prototype_1.service.AppStateService
                 .getInstance();
@@ -37,7 +58,13 @@ public class DashboardApplication extends Application {
         // --- Dependency Injection ---
         fxmlLoader.setControllerFactory(param -> {
             if (param == com.example.automl_prototype_1.controller.DashboardController.class) {
-                return new com.example.automl_prototype_1.controller.DashboardController(appStateService);
+                try {
+                    return new com.example.automl_prototype_1.controller.DashboardController(appStateService);
+                } catch (Throwable t) {
+                    System.err.println("CRITICAL FAILURE IN CONTROLLER FACTORY:");
+                    t.printStackTrace();
+                    throw new RuntimeException("Controller Creation Failed", t);
+                }
             } else {
                 try {
                     return param.getConstructor().newInstance();

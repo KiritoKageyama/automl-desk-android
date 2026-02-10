@@ -2,6 +2,8 @@ package com.example.automl_prototype_1.controller;
 
 import javafx.scene.control.Alert;
 import com.example.automl_prototype_1.algorithm.*;
+import com.example.automl_prototype_1.algorithm.AtomSearchOptimization;
+import com.example.automl_prototype_1.service.HyperparameterTuningService;
 import com.example.automl_prototype_1.dataprovider.CsvDataProvider;
 import com.example.automl_prototype_1.model.Dataset;
 import com.example.automl_prototype_1.model.ExecutionResult;
@@ -10,6 +12,7 @@ import javafx.application.Platform;
 import javafx.concurrent.Task;
 import javafx.fxml.FXML;
 import javafx.fxml.FXMLLoader;
+
 //import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Parent;
@@ -35,6 +38,12 @@ public class DashboardController {
     private StackPane mainContent;
     @FXML
     private Label datasetLabel;
+    @FXML
+    private Label resourceStatusLabel; // Phase 6 UI Indicator
+    @FXML
+    private StackPane chatContainer;
+    @FXML
+    private Button chatToggleBtn;
 
     // --- Services ---
 
@@ -59,6 +68,9 @@ public class DashboardController {
         this.preprocessorService = new PreprocessorService();
         this.tuningService = new HyperparameterTuningService();
 
+        // Phase 6 Step 6: UI Resource Mode
+        checkResourceMode();
+
         // Set initial view
         loadView("upload_view.fxml");
 
@@ -70,11 +82,107 @@ public class DashboardController {
         settingsBtn.setOnAction(event -> loadView("settings_view.fxml"));
         simulatorBtn.setOnAction(event -> loadView("pipeline_simulator.fxml"));
         exitBtn.setOnAction(event -> onExitClicked());
+
+        // Chat Integration
+        if (chatContainer != null && chatToggleBtn != null) {
+            loadChatView();
+            chatToggleBtn.setOnAction(e -> {
+                boolean isVisible = chatContainer.isVisible();
+                chatContainer.setVisible(!isVisible);
+                chatContainer.setManaged(!isVisible); // Ensure it doesn't take space when hidden? Actually it's in
+                                                      // overlay so managed doesn't matter much for layout but good
+                                                      // practice.
+                // Actually in an overlay stackpane, managed=false or true mainly affects if it
+                // can be picked?
+                // Let's just toggle Visibility.
+            });
+        }
+    }
+
+    private void loadChatView() {
+        try {
+            FXMLLoader loader = new FXMLLoader(
+                    getClass().getResource("/com/example/automl_prototype_1/chat_view.fxml"));
+            Parent chatView = loader.load();
+            ChatViewController controller = loader.getController();
+
+            // Set close action
+            controller.setOnCloseAction(() -> chatContainer.setVisible(false));
+
+            chatContainer.getChildren().setAll(chatView);
+        } catch (IOException e) {
+            LogService.error("Dashboard", "Failed to load Chat View: " + e.getMessage());
+        }
+    }
+
+    private void checkResourceMode() {
+        // Run async check to avoid blocking UI init
+        new Thread(() -> {
+            boolean gpu = HardwareAcceleratorService.isGpuAvailable();
+            String gpuName = HardwareAcceleratorService.getGpuName();
+
+            Platform.runLater(() -> {
+                if (resourceStatusLabel != null) {
+                    if (gpu) {
+                        resourceStatusLabel.setText("GPU ACTIVE: " + gpuName);
+                        // Green accent for success
+                        resourceStatusLabel.setStyle(
+                                "-fx-font-size: 11px; -fx-padding: 5 10 5 10; -fx-background-radius: 4; -fx-background-color: #dcfce7; -fx-text-fill: #166534; -fx-font-weight: bold;");
+                    } else {
+                        resourceStatusLabel.setText("CPU FALLBACK MODE");
+                        // Orange accent for warning
+                        resourceStatusLabel.setStyle(
+                                "-fx-font-size: 11px; -fx-padding: 5 10 5 10; -fx-background-radius: 4; -fx-background-color: #ffedd5; -fx-text-fill: #9a3412; -fx-font-weight: bold;");
+                    }
+                }
+            });
+        }).start();
     }
 
     // In DashboardController.java
 
+    private Task<List<ExecutionResult>> executionTask;
+    private boolean isRunning = false;
+
     private void handleRunModel() {
+        // Toggle Logic for STOP
+        if (isRunning) {
+            LogService.info("CORE", "Stop requested by user.");
+            // UI Feedback IMMEDIATELY
+            runBtn.setDisable(true); // Disable to prevent double clicks
+            runBtn.setText("Stopping...");
+
+            if (executionTask != null && executionTask.isRunning()) {
+                executionTask.cancel();
+            }
+
+            // Run heavy termination in background to avoid UI freeze
+            new Thread(() -> {
+                // Force Kill Mechanism (Deep Kill)
+                PythonExecutionService.getInstance().terminateAll();
+
+                // UI Cleanup on JavaFX Thread
+                Platform.runLater(() -> {
+                    isRunning = false;
+                    runBtn.setText("Run Experiment");
+                    runBtn.setStyle(""); // Reset style
+                    runBtn.setDisable(false); // Ensure enabled
+
+                    // Log Interruption
+                    LogService.error("CORE", "=== EXECUTION STOPPED BY USER ===");
+
+                    // Critical Log Analysis
+                    String analysisReport = LogService.getInstance().analyzeCriticalErrors();
+                    LogService.info("CORE", analysisReport);
+
+                    // Show Analysis to User
+                    showAlert(Alert.AlertType.WARNING, "Execution Stopped",
+                            "Process terminated by user.\n\n" + analysisReport);
+                });
+            }).start();
+            return;
+        }
+
         // ===================================================================
         // 1. GATHER AND VALIDATE STATE
         // ===================================================================
@@ -125,7 +233,11 @@ public class DashboardController {
         // 2. SETUP THE UI AND BACKEND FOR THE EXPERIMENT RUN
         // ===================================================================
         ProgressTrackingService.getInstance().reset(algorithms);
-        runBtn.setDisable(true);
+
+        // Update UI to Running State
+        isRunning = true;
+        runBtn.setText("STOP");
+        runBtn.setStyle("-fx-background-color: #ef4444; -fx-text-fill: white;"); // Tailwind red-500
 
         // Load the progress view and get a reference to its controller
         ProgressViewController progressController = null;
@@ -139,15 +251,18 @@ public class DashboardController {
             mainContent.getChildren().setAll(progressView);
         } catch (IOException e) {
             e.printStackTrace();
+            LogService.error("Dashboard", "Failed to load progress view: " + e.getMessage());
             showError("Failed to load progress view.");
-            runBtn.setDisable(false); // Re-enable the button on UI failure
+            isRunning = false;
+            runBtn.setText("Run Experiment");
+            runBtn.setStyle("");
             return;
         }
 
         // ===================================================================
         // 3. DEFINE THE LONG-RUNNING WORK IN A BACKGROUND TASK
         // ===================================================================
-        Task<List<ExecutionResult>> executionTask = new Task<>() {
+        executionTask = new Task<>() {
             @Override
             protected List<ExecutionResult> call() throws Exception {
                 updateMessage("Loading and Preprocessing Data...");
@@ -155,30 +270,70 @@ public class DashboardController {
                 try (FileReader reader = new FileReader(datasetFile)) {
                     rawDataset = csvDataProvider.loadDataset(reader);
                 }
-                // Auto-apply scaling for distance-based algorithms if not explicitly set
                 // Auto-apply scaling: Dropdown takes precedence, Checkbox is fallback default
-                String effectiveScaling = appStateService.getScalingStrategy();
-                if (effectiveScaling == null || effectiveScaling.equalsIgnoreCase("None")) {
-                    if (appStateService.isStandardizationEnabled()) {
-                        effectiveScaling = "Standardization";
-                    } else {
-                        effectiveScaling = "None";
+                // Retrieve full config from State
+                com.example.automl_prototype_1.model.PreprocessingConfig config = appStateService
+                        .getPreprocessingConfig();
+
+                // Fallback check if config is somehow null (safety)
+                if (config == null) {
+                    config = new com.example.automl_prototype_1.model.PreprocessingConfig();
+                    String effectiveScaling = appStateService.getScalingStrategy();
+                    if (effectiveScaling == null) {
+                        effectiveScaling = "Standardization"; // Default to Standardization only if null
+                    }
+                    config.setScalingStrategy(effectiveScaling);
+                }
+
+                // --- CRITICAL FIX: PREVENT DATA LEAKAGE ---
+                // We must NOT apply scaling here globally. Scaling must be done inside the
+                // Algorithm's Cross-Validation loop.
+                // We create a "Safe Config" that disables scaling for this pre-processing step,
+                // while preserving other steps like ID removal.
+                com.example.automl_prototype_1.model.PreprocessingConfig safeConfig = new com.example.automl_prototype_1.model.PreprocessingConfig();
+                safeConfig.setAutoRemoveIdColumns(config.isAutoRemoveIdColumns());
+                // Imputation must also be done per-fold in CV loop.
+                safeConfig.setImputeMissingValues(false); // FORCE FALSE
+                safeConfig.setRemoveOutliers(config.isRemoveOutliers()); // Outlier removal logic might still be risky
+                                                                         // globally but accepted for now
+                safeConfig.setScalingStrategy("None"); // FORCE NONE
+
+                LogService.info("Dashboard", "Applying Preprocessing (Scaling Disabled to prevent Leakage)...");
+                Dataset finalDataset = preprocessorService.runPreprocessingPipeline(rawDataset, targetColumn,
+                        safeConfig);
+
+                // Phase 7: Metric & Data Flow Audit
+                // Optimization: Release rawDataset immediately to free RAM
+                rawDataset = null;
+                System.gc(); // Suggest GC (aggressive optimization for 16GB limit)
+
+                // --- EXPLICIT GPU STARTUP ---
+                // Pre-warm the GPU server if needed. This avoids race conditions and provides
+                // UI feedback.
+                if (classifier.getName().contains("GPU") || classifier.getName().contains("Python")) {
+                    updateMessage("Starting GPU Server...");
+                    PythonExecutionService.getInstance().startGpuServer();
+                    // Quick check to ensure it's up
+                    if (!PythonExecutionService.getInstance().isServerRunning()) {
+                        throw new RuntimeException("GPU Server failed to start. Check logs.");
                     }
                 }
 
-                System.out.println("Scaling Strategy: " + effectiveScaling);
-
-                Dataset finalDataset = preprocessorService.runPreprocessingPipeline(rawDataset, targetColumn,
-                        effectiveScaling);
-
                 // --- THIS IS THE CORRECT DYNAMIC TRIAL LOGIC ---
                 int tuningTrials;
-                if (finalDataset.getRecordCount() < 1000) {
-                    tuningTrials = 3; // Fewer trials for small datasets like WDBC
-                } else if (finalDataset.getRecordCount() < 10000) {
-                    tuningTrials = 6; // Standard trials for medium datasets
+                // MANUAL OVERRIDE: Trials
+                if (appStateService.getManualTrialsOverride() != null
+                        && appStateService.getManualTrialsOverride() > 0) {
+                    tuningTrials = appStateService.getManualTrialsOverride();
+                    LogService.info("Dashboard", "Using Manual Tuning Trials: " + tuningTrials);
                 } else {
-                    tuningTrials = 9; // More trials for large datasets
+                    if (finalDataset.getRecordCount() < 1000) {
+                        tuningTrials = 3; // Fewer trials for small datasets like WDBC
+                    } else if (finalDataset.getRecordCount() < 10000) {
+                        tuningTrials = 6; // Standard trials for medium datasets
+                    } else {
+                        tuningTrials = 9; // More trials for large datasets
+                    }
                 }
                 // -------------------------------------------------
 
@@ -188,9 +343,22 @@ public class DashboardController {
                 progressService.reset(algorithms); // Reset and prime the service with the new queue
 
                 for (int i = 0; i < totalAlgos; i++) {
+                    if (isCancelled())
+                        break; // Check for cancellation
+
                     String algoName = algorithms.get(i);
+                    OptimizationAlgorithm algorithm = getAlgorithmImplementation(algoName); // Declare before use
+
+                    // MANUAL OVERRIDE: Iterations (If supported)
+                    if (appStateService.getManualIterationsOverride() != null
+                            && appStateService.getManualIterationsOverride() > 0) {
+                        algorithm.setMaxIterations(appStateService.getManualIterationsOverride());
+                        LogService.info("Dashboard", "Using Manual Iterations for " + algoName + ": "
+                                + appStateService.getManualIterationsOverride());
+                    }
 
                     if (isTuning) {
+                        LogService.info("Dashboard", "Tuning enabled for " + algoName);
                         updateMessage("Tuning " + algoName + " (" + (i + 1) + "/" + totalAlgos + ")");
                         // Use the CORRECT 'tuningTrials' variable here
                         ExecutionResult bestTunedResult = tuningService.tune(algoName, tuningTrials, finalDataset,
@@ -199,12 +367,30 @@ public class DashboardController {
                             finalResults.add(bestTunedResult);
                     } else {
                         updateMessage("Running " + algoName + " (" + (i + 1) + "/" + totalAlgos + ")");
-                        OptimizationAlgorithm algorithm = getAlgorithmImplementation(algoName);
+                        // Reuse previously declared variable
                         if (algorithm != null) {
                             finalResults.add(algorithm.execute(finalDataset, Map.of("classifier", classifier)));
                         }
                     }
                 }
+
+                // --- Phase 8: Final Refit & Model Export ---
+                if (!finalResults.isEmpty() && !isCancelled()) {
+                    updateMessage("Refitting Best Model for Export...");
+                    // Find best result based on "Optimization Metric" - defaulting to Accuracy for
+                    // now
+                    ExecutionResult best = finalResults.stream()
+                            .max(java.util.Comparator.comparingDouble(ExecutionResult::getAccuracy))
+                            .orElse(finalResults.get(0));
+
+                    try {
+                        com.example.automl_prototype_1.service.ExecutionService.getInstance().refitBestModel(best,
+                                classifier, finalDataset);
+                    } catch (Exception e) {
+                        LogService.error("Dashboard", "Refit Failed: " + e.getMessage());
+                    }
+                }
+
                 return finalResults;
             }
         };
@@ -214,31 +400,49 @@ public class DashboardController {
         // ===================================================================
 
         // This is the critical link that makes the UI update in real-time
-        if (progressController != null) {
+        if (progressController != null)
+
+        {
             progressController.bindToTask(executionTask);
         }
 
         // Define what happens when the task finishes successfully
         executionTask.setOnSucceeded(event -> Platform.runLater(() -> {
             appStateService.setExecutionResults(executionTask.getValue());
+            isRunning = false;
+            runBtn.setText("Run Experiment");
+            runBtn.setStyle("");
             runBtn.setDisable(false);
             loadView("results_view.fxml"); // Automatically cleans up progress view and shows results
         }));
 
         // Define what happens if the task fails with an exception
         executionTask.setOnFailed(event -> Platform.runLater(() -> {
+            isRunning = false;
+            runBtn.setText("Run Experiment");
+            runBtn.setStyle("");
+            runBtn.setDisable(false);
+
             Throwable e = executionTask.getException();
+            LogService.error("Dashboard", "Execution task failed: " + e.getMessage());
             e.printStackTrace(); // Keep logging to console
 
             // Show a persistent Alert dialog so the user can see the error
             showAlert(Alert.AlertType.ERROR, "Execution Failed",
                     "An error occurred during execution:\n" + e.getMessage());
 
-            runBtn.setDisable(false);
             // Do NOT redirect to upload_view.fxml. Stay on the current view (Progress View)
             // or let the user decide.
             // If we want to return to Algo Select, we can, but let's let the user read the
             // error first.
+        }));
+
+        executionTask.setOnCancelled(event -> Platform.runLater(() -> {
+            isRunning = false;
+            runBtn.setText("Run Experiment");
+            runBtn.setStyle("");
+            runBtn.setDisable(false);
+            LogService.info("CORE", "Task cancelled confirmation received in UI.");
         }));
 
         // ===================================================================
@@ -312,13 +516,41 @@ public class DashboardController {
             updateDatasetLabel();
         } catch (IOException e) {
             // This is a good place for more robust logging later
+            LogService.error("Dashboard", "Error loading view " + fxmlFile + ": " + e.getMessage());
             e.printStackTrace();
-            showError("Error loading view: " + fxmlFile);
+
+            // Show detailed stack trace to user for debugging
+            java.io.StringWriter sw = new java.io.StringWriter();
+            java.io.PrintWriter pw = new java.io.PrintWriter(sw);
+            e.printStackTrace(pw);
+            String exceptionText = sw.toString();
+
+            Alert alert = new Alert(Alert.AlertType.ERROR);
+            alert.setTitle("View Load Error");
+            alert.setHeaderText("Failed to load: " + fxmlFile);
+            alert.setContentText(e.getMessage());
+
+            // Expandable Exception Content
+            javafx.scene.control.TextArea textArea = new javafx.scene.control.TextArea(exceptionText);
+            textArea.setEditable(false);
+            textArea.setWrapText(true);
+            textArea.setMaxWidth(Double.MAX_VALUE);
+            textArea.setMaxHeight(Double.MAX_VALUE);
+            javafx.scene.layout.GridPane.setVgrow(textArea, javafx.scene.layout.Priority.ALWAYS);
+            javafx.scene.layout.GridPane.setHgrow(textArea, javafx.scene.layout.Priority.ALWAYS);
+
+            javafx.scene.layout.GridPane expContent = new javafx.scene.layout.GridPane();
+            expContent.setMaxWidth(Double.MAX_VALUE);
+            expContent.add(new Label("Full Stack Trace:"), 0, 0);
+            expContent.add(textArea, 0, 1);
+
+            alert.getDialogPane().setExpandableContent(expContent);
+            alert.showAndWait();
         }
     }
 
     private void showError(String message) {
-        System.err.println("UI Error: " + message);
+        LogService.error("Dashboard", "UI Error: " + message);
         Label errorLabel = new Label("Error: " + message);
         errorLabel.setStyle("-fx-text-fill: red; -fx-font-weight: bold;");
         VBox errorBox = new VBox(errorLabel);

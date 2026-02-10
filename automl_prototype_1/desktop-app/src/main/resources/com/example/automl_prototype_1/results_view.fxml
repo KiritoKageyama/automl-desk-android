@@ -59,7 +59,10 @@
 
             <!-- Results Table -->
             <VBox spacing="10.0">
-                <Label styleClass="section-header" text="Performance Metrics"/>
+                <HBox alignment="CENTER_LEFT" spacing="20">
+                    <Label styleClass="section-header" text="Performance Metrics"/>
+                    <javafx.scene.control.CheckBox fx:id="showAllCheckBox" text="Show All Algorithms in Charts" selected="true" style="-fx-font-weight: bold;"/>
+                </HBox>
                 <TableView fx:id="resultsTable" prefHeight="250.0">
                     <columns>
                         <TableColumn fx:id="algoCol" prefWidth="150.0" text="Algorithm"/>
@@ -128,6 +131,7 @@
             <!-- Actions -->
             <HBox spacing="15.0" alignment="CENTER_RIGHT">
                 <Button fx:id="viewReportButton" onAction="#handleViewReport" styleClass="action-button" text="View Detailed Report"/>
+                <Button fx:id="exportOnnxButton" onAction="#handleExportOnnx" styleClass="action-button" text="Export ONNX Model" visible="false" managed="false" style="-fx-background-color: #27ae60;"/>
                 <Button fx:id="exportButton" onAction="#handleExport" styleClass="action-button" text="Export to CSV"/>
                 <Button fx:id="saveButton" onAction="#handleSaveJson" styleClass="secondary-button" text="Save JSON"/>
                 <Button onAction="#handleBack" styleClass="secondary-button" text="Back to Dashboard"/>

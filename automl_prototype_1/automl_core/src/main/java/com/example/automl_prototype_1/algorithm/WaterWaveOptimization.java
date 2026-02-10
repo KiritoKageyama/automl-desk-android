@@ -57,6 +57,20 @@ public class WaterWaveOptimization extends AbstractFeatureSelectionAlgorithm {
     }
 
     @Override
+    protected double getAverageFitness() {
+        if (heights == null || heights.length == 0)
+            return 0.0;
+        double sum = 0.0;
+        int count = 0;
+        for (double h : heights) {
+            double fitness = 1.0 - h;
+            sum += fitness;
+            count++;
+        }
+        return count > 0 ? sum / count : 0.0;
+    }
+
+    @Override
     protected void initialize(int numFeatures, Dataset dataset, IClassifier classifier, List<Fold> folds) {
         this.waves = new double[populationSize][numFeatures];
         this.heights = new double[populationSize];
@@ -65,15 +79,22 @@ public class WaterWaveOptimization extends AbstractFeatureSelectionAlgorithm {
         this.bestFitness = Double.NEGATIVE_INFINITY;
 
         // Parallel Initialization
-        List<FitnessResult> results = IntStream.range(0, populationSize).parallel().mapToObj(i -> {
-            var rand = ThreadLocalRandom.current();
-            double[] wave = new double[numFeatures];
-            for (int j = 0; j < numFeatures; j++) {
-                wave[j] = rand.nextDouble() < 0.5 ? 0 : 1;
-            }
-            double fitness = calculateFitness(wave, classifier, folds);
-            return new FitnessResult(i, fitness, wave);
-        }).toList();
+        // Smart Parallelism
+        List<FitnessResult> results = new java.util.ArrayList<>();
+        try {
+            results = this.executorService.submit(() -> IntStream.range(0, populationSize).parallel().mapToObj(i -> {
+                var rand = ThreadLocalRandom.current();
+                double[] wave = new double[numFeatures];
+                for (int j = 0; j < numFeatures; j++) {
+                    wave[j] = rand.nextDouble() < 0.5 ? 0 : 1;
+                }
+                double fitness = calculateFitness(wave, classifier, folds);
+                return new FitnessResult(i, fitness, wave);
+            }).toList()).get();
+        } catch (Exception e) {
+            com.example.automl_prototype_1.service.LogService.error("WWO",
+                    "Error in parallel initialization: " + e.getMessage());
+        }
 
         // Sequential Update
         for (FitnessResult res : results) {
@@ -85,7 +106,7 @@ public class WaterWaveOptimization extends AbstractFeatureSelectionAlgorithm {
                 this.bestSolutionWave = Arrays.copyOf(res.wave, numFeatures);
             }
         }
-        System.out.println("WWO Initial Best Fitness: " + this.bestFitness);
+        com.example.automl_prototype_1.service.LogService.info("WWO", "Initial Best Fitness: " + this.bestFitness);
     }
 
     @Override
@@ -93,35 +114,31 @@ public class WaterWaveOptimization extends AbstractFeatureSelectionAlgorithm {
             List<Fold> folds) {
 
         // Parallel Propagation and Evaluation
-        List<FitnessResult> results = IntStream.range(0, populationSize).parallel().mapToObj(i -> {
-            // Propagate uses random, so we need thread safety or local logic if propagate
-            // was depending on shared random
-            // propagate method defined below uses 'random' (instance field). We should fix
-            // that.
-            // But since 'propagate' is private, we can't easily change it without changing
-            // the call.
-            // Actually, we can just inline logic or use ThreadLocalRandom inside the
-            // lambda.
-            // Let's assume propagate needs refactoring to be thread-safe or we rewrite it
-            // here.
+        // Smart Parallelism
+        List<FitnessResult> results = new java.util.ArrayList<>();
+        try {
+            results = this.executorService.submit(() -> IntStream.range(0, populationSize).parallel().mapToObj(i -> {
+                // Propagate (using ThreadLocalRandom for safety)
+                double[] originalWave = this.waves[i];
+                double wavelength = this.wavelengths[i];
 
-            // To be safe, we'll rewrite propagate logic here using ThreadLocalRandom
-            double[] originalWave = this.waves[i];
-            double wavelength = this.wavelengths[i];
+                double[] newWave = Arrays.copyOf(originalWave, numFeatures);
+                int numToFlip = (int) Math.round(wavelength * numFeatures);
+                if (numToFlip == 0)
+                    numToFlip = 1;
+                var rand = ThreadLocalRandom.current();
+                for (int k = 0; k < numToFlip; k++) {
+                    int randomIndex = rand.nextInt(numFeatures);
+                    newWave[randomIndex] = 1.0 - newWave[randomIndex];
+                }
 
-            double[] newWave = Arrays.copyOf(originalWave, numFeatures);
-            int numToFlip = (int) Math.round(wavelength * numFeatures);
-            if (numToFlip == 0)
-                numToFlip = 1;
-            var rand = ThreadLocalRandom.current();
-            for (int k = 0; k < numToFlip; k++) {
-                int randomIndex = rand.nextInt(numFeatures);
-                newWave[randomIndex] = 1.0 - newWave[randomIndex];
-            }
-
-            double newFitness = calculateFitness(newWave, classifier, folds);
-            return new FitnessResult(i, newFitness, newWave);
-        }).toList();
+                double newFitness = calculateFitness(newWave, classifier, folds);
+                return new FitnessResult(i, newFitness, newWave);
+            }).toList()).get();
+        } catch (Exception e) {
+            com.example.automl_prototype_1.service.LogService.error("WWO",
+                    "Error in parallel propagation: " + e.getMessage());
+        }
 
         // Sequential State Update & Refraction/Breaking
         for (FitnessResult res : results) {
@@ -164,7 +181,8 @@ public class WaterWaveOptimization extends AbstractFeatureSelectionAlgorithm {
         for (int i = 0; i < populationSize; i++) {
             this.wavelengths[i] = this.wavelengths[i] * alpha;
         }
-        System.out.println("Iteration " + (iteration + 1) + " | Best Fitness: " + this.bestFitness);
+        com.example.automl_prototype_1.service.LogService.info("WWO",
+                "Iteration " + (iteration + 1) + " | Best Fitness: " + this.bestFitness);
     }
 
     // Helper methods (propagate removed/inlined to use ThreadLocalRandom)

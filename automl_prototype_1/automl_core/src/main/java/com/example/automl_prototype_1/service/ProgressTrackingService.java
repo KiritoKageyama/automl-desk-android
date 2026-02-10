@@ -143,10 +143,16 @@ public class ProgressTrackingService {
 
     public void jobFinished(String algoId) {
         currentRunningAlgo.set(null);
-        progressMap.computeIfPresent(algoId, (key, oldProgress) -> new AlgoProgress(
+        AlgoProgress finalState = progressMap.computeIfPresent(algoId, (key, oldProgress) -> new AlgoProgress(
                 key, Phase.DONE, oldProgress.currentTrial(), oldProgress.totalTrials(),
                 oldProgress.totalIters(), oldProgress.totalIters(),
                 oldProgress.bestScore(), oldProgress.bestTrial(), oldProgress.bestIter(), 0L));
+
+        // Trigger Archive & Summarization
+        if (finalState != null) {
+            HistoryService.getInstance().archiveCurrentRun(algoId, finalState.bestScore());
+        }
+
         notifyComplete(algoId);
     }
 

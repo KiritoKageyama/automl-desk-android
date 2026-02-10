@@ -23,11 +23,14 @@
         <padding><Insets top="20" right="30" bottom="20" left="30"/></padding>
         <Label styleClass="header-label" text="1. Upload and Configure"/>
         <Button fx:id="browseButton" text="Browse for Dataset..." maxWidth="Infinity"/>
+        <Button text="⚡ Generate Synthetic Data" maxWidth="Infinity" onAction="#handleGenerateSynthetic" 
+                style="-fx-background-color: #2196F3; -fx-text-fill: white;"/>
         <Label fx:id="selectedFileLabel" text="No file selected." wrapText="true"/>
         <Separator/>
         <Label styleClass="sub-header-label" text="Select Target Column"/>
         <Label text="(The column you want to predict)" style="-fx-font-style: italic; -fx-text-fill: #999;"/>
         <ChoiceBox fx:id="targetColumnChoiceBox" prefWidth="300" disable="true"/>
+        <Button text="Advanced Settings..." maxWidth="Infinity" onAction="#handleAdvancedSettings" style="-fx-background-color: #ddd; -fx-text-fill: #333;"/>
         <Button fx:id="analyzeButton" text="Analyze Dataset" disable="true" maxWidth="Infinity" styleClass="button-accent"/>
     </VBox>
 

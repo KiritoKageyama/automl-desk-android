@@ -1,0 +1,111 @@
+{
+  "timestamp" : "2026-02-05T10:02:55.914413600",
+  "state" : {
+    "currentRun" : null,
+    "queue" : [ {
+      "algoId" : "GA",
+      "phase" : "QUEUED",
+      "currentTrial" : 0,
+      "totalTrials" : 0,
+      "currentIter" : 0,
+      "totalIters" : 0,
+      "bestScore" : 0.0,
+      "bestTrial" : 0,
+      "bestIter" : 0,
+      "etaMs" : -1
+    }, {
+      "algoId" : "IGPSO",
+      "phase" : "QUEUED",
+      "currentTrial" : 0,
+      "totalTrials" : 0,
+      "currentIter" : 0,
+      "totalIters" : 0,
+      "bestScore" : 0.0,
+      "bestTrial" : 0,
+      "bestIter" : 0,
+      "etaMs" : -1
+    }, {
+      "algoId" : "WWO",
+      "phase" : "QUEUED",
+      "currentTrial" : 0,
+      "totalTrials" : 0,
+      "currentIter" : 0,
+      "totalIters" : 0,
+      "bestScore" : 0.0,
+      "bestTrial" : 0,
+      "bestIter" : 0,
+      "etaMs" : -1
+    }, {
+      "algoId" : "BPSO",
+      "phase" : "QUEUED",
+      "currentTrial" : 0,
+      "totalTrials" : 0,
+      "currentIter" : 0,
+      "totalIters" : 0,
+      "bestScore" : 0.0,
+      "bestTrial" : 0,
+      "bestIter" : 0,
+      "etaMs" : -1
+    }, {
+      "algoId" : "ASO",
+      "phase" : "QUEUED",
+      "currentTrial" : 0,
+      "totalTrials" : 0,
+      "currentIter" : 0,
+      "totalIters" : 0,
+      "bestScore" : 0.0,
+      "bestTrial" : 0,
+      "bestIter" : 0,
+      "etaMs" : -1
+    }, {
+      "algoId" : "PLS",
+      "phase" : "QUEUED",
+      "currentTrial" : 0,
+      "totalTrials" : 0,
+      "currentIter" : 0,
+      "totalIters" : 0,
+      "bestScore" : 0.0,
+      "bestTrial" : 0,
+      "bestIter" : 0,
+      "etaMs" : -1
+    }, {
+      "algoId" : "SA",
+      "phase" : "QUEUED",
+      "currentTrial" : 0,
+      "totalTrials" : 0,
+      "currentIter" : 0,
+      "totalIters" : 0,
+      "bestScore" : 0.0,
+      "bestTrial" : 0,
+      "bestIter" : 0,
+      "etaMs" : -1
+    }, {
+      "algoId" : "GWO",
+      "phase" : "QUEUED",
+      "currentTrial" : 0,
+      "totalTrials" : 0,
+      "currentIter" : 0,
+      "totalIters" : 0,
+      "bestScore" : 0.0,
+      "bestTrial" : 0,
+      "bestIter" : 0,
+      "etaMs" : -1
+    }, {
+      "algoId" : "DE",
+      "phase" : "QUEUED",
+      "currentTrial" : 0,
+      "totalTrials" : 0,
+      "currentIter" : 0,
+      "totalIters" : 0,
+      "bestScore" : 0.0,
+      "bestTrial" : 0,
+      "bestIter" : 0,
+      "etaMs" : -1
+    } ],
+    "globalBestAlgo" : "Simulated Annealing (SA)",
+    "globalBestScore" : 0.986952053438908,
+    "globalBestTrial" : 2,
+    "globalBestIter" : 60
+  },
+  "system_memory_mb" : 108
+}

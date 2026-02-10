@@ -28,7 +28,22 @@ public class GreyWolfOptimizer extends AbstractFeatureSelectionAlgorithm {
 
     public GreyWolfOptimizer(int populationSize, int maxIterations, int kFolds, int patience) {
         super(kFolds, patience);
-        this.populationSize = populationSize;
+
+        int tempPopSize = populationSize;
+        try {
+            com.example.automl_prototype_1.service.AppStateService appState = com.example.automl_prototype_1.service.AppStateService
+                    .getInstance();
+            if (appState.isAdvancedMode()) {
+                Double confPop = appState.getAlgorithmHyperparameter("GWO", "populationSize");
+                if (confPop != null) {
+                    tempPopSize = confPop.intValue();
+                    LogService.info("GWO", "Initialized with Advanced Params: Pop=" + tempPopSize);
+                }
+            }
+        } catch (NoClassDefFoundError | Exception e) {
+        }
+
+        this.populationSize = tempPopSize;
         this.maxIterations = maxIterations;
     }
 
@@ -58,6 +73,21 @@ public class GreyWolfOptimizer extends AbstractFeatureSelectionAlgorithm {
     @Override
     protected double getBestFitness() {
         return this.alphaScore;
+    }
+
+    @Override
+    protected double getAverageFitness() {
+        if (fitnesses == null || fitnesses.length == 0)
+            return 0.0;
+        double sum = 0.0;
+        int count = 0;
+        for (double f : fitnesses) {
+            if (f != Double.NEGATIVE_INFINITY) {
+                sum += f;
+                count++;
+            }
+        }
+        return count > 0 ? sum / count : 0.0;
     }
 
     @Override
@@ -113,52 +143,74 @@ public class GreyWolfOptimizer extends AbstractFeatureSelectionAlgorithm {
 
         // Update positions using Alpha, Beta, Delta
         // We use a temporary array for new positions to be synchronous
-        double[][] newPositions = new double[populationSize][numFeatures];
+        // We use a temporary array for new positions to be synchronous
+        // double[][] newPositions = new double[populationSize][numFeatures]; // Removed
+        // unused variable
 
         // Parallel update calculation
         // Note: ThreadLocalRandom is needed inside parallel stream
-        IntStream.range(0, populationSize).parallel().forEach(i -> {
-            var rand = ThreadLocalRandom.current();
-            for (int j = 0; j < numFeatures; j++) {
-                // Update based on Alpha
-                double r1 = rand.nextDouble();
-                double r2 = rand.nextDouble();
-                double A1 = 2 * a * r1 - a;
-                double C1 = 2 * r2;
-                double D_alpha = Math.abs(C1 * alphaPos[j] - positions[i][j]);
-                double X1 = alphaPos[j] - A1 * D_alpha;
+        // Smart Parallelism Refactor: Calculate Fitness Inside Thread Pool
+        int optimalThreads = com.example.automl_prototype_1.service.HardwareAcceleratorService
+                .calculateOptimalThreadCount();
+        @SuppressWarnings("resource")
+        java.util.concurrent.ForkJoinPool customThreadPool = new java.util.concurrent.ForkJoinPool(optimalThreads);
 
-                // Update based on Beta
-                r1 = rand.nextDouble();
-                r2 = rand.nextDouble();
-                double A2 = 2 * a * r1 - a;
-                double C2 = 2 * r2;
-                double D_beta = Math.abs(C2 * betaPos[j] - positions[i][j]);
-                double X2 = betaPos[j] - A2 * D_beta;
+        record GwoResult(int index, double[] newPosition, double fitness) {
+        }
 
-                // Update based on Delta
-                r1 = rand.nextDouble();
-                r2 = rand.nextDouble();
-                double A3 = 2 * a * r1 - a;
-                double C3 = 2 * r2;
-                double D_delta = Math.abs(C3 * deltaPos[j] - positions[i][j]);
-                double X3 = deltaPos[j] - A3 * D_delta;
+        List<GwoResult> results = new java.util.ArrayList<>();
+        try {
+            results = customThreadPool.submit(() -> IntStream.range(0, populationSize).parallel().mapToObj(i -> {
+                double[] newPos = new double[numFeatures];
+                var rand = ThreadLocalRandom.current();
+                for (int j = 0; j < numFeatures; j++) {
+                    // Update based on Alpha
+                    double r1 = rand.nextDouble();
+                    double r2 = rand.nextDouble();
+                    double A1 = 2 * a * r1 - a;
+                    double C1 = 2 * r2;
+                    double D_alpha = Math.abs(C1 * alphaPos[j] - positions[i][j]);
+                    double X1 = alphaPos[j] - A1 * D_alpha;
 
-                // Average
-                double continuousX = (X1 + X2 + X3) / 3.0;
+                    // Update based on Beta
+                    r1 = rand.nextDouble();
+                    r2 = rand.nextDouble();
+                    double A2 = 2 * a * r1 - a;
+                    double C2 = 2 * r2;
+                    double D_beta = Math.abs(C2 * betaPos[j] - positions[i][j]);
+                    double X2 = betaPos[j] - A2 * D_beta;
 
-                // Discretization (Sigmoid)
-                double sigmoid = 1.0 / (1.0 + Math.exp(-continuousX));
-                newPositions[i][j] = rand.nextDouble() < sigmoid ? 1.0 : 0.0;
+                    // Update based on Delta
+                    r1 = rand.nextDouble();
+                    r2 = rand.nextDouble();
+                    double A3 = 2 * a * r1 - a;
+                    double C3 = 2 * r2;
+                    double D_delta = Math.abs(C3 * deltaPos[j] - positions[i][j]);
+                    double X3 = deltaPos[j] - A3 * D_delta;
+
+                    // Average
+                    double continuousX = (X1 + X2 + X3) / 3.0;
+
+                    // Discretization (Sigmoid)
+                    double sigmoid = 1.0 / (1.0 + Math.exp(-continuousX));
+                    newPos[j] = rand.nextDouble() < sigmoid ? 1.0 : 0.0;
+                }
+                double fit = calculateFitness(newPos, classifier, folds);
+                return new GwoResult(i, newPos, fit);
+            }).toList()).get();
+        } catch (Exception e) {
+            e.printStackTrace();
+        } finally {
+            customThreadPool.shutdown();
+        }
+
+        // Evaluate and Update Hierarchy (Sequential update from results)
+        if (results != null) {
+            for (GwoResult res : results) {
+                positions[res.index] = res.newPosition;
+                fitnesses[res.index] = res.fitness;
+                updateHierarchy(positions[res.index], res.fitness);
             }
-        });
-
-        // Evaluate and Update Hierarchy (Sequential)
-        for (int i = 0; i < populationSize; i++) {
-            positions[i] = newPositions[i];
-            double fit = calculateFitness(positions[i], classifier, folds);
-            fitnesses[i] = fit;
-            updateHierarchy(positions[i], fit);
         }
 
         LogService.info("GWO", "Iteration " + (iteration + 1) + " | Alpha Score: " + alphaScore);

@@ -2,6 +2,7 @@ package com.example.automl_prototype_1.controller;
 
 import com.example.automl_prototype_1.model.ExecutionResult;
 import com.example.automl_prototype_1.service.AppStateService;
+import com.example.automl_prototype_1.service.LogService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import javafx.collections.FXCollections;
@@ -55,6 +56,8 @@ public class ResultsViewController implements Initializable {
     private TableColumn<ExecutionResult, Double> selectedFeaturesCol;
     @FXML
     private TableColumn<ExecutionResult, Long> timeCol;
+    @FXML
+    private Button exportOnnxButton;
     @FXML
     private Button exportButton;
     @FXML
@@ -110,6 +113,14 @@ public class ResultsViewController implements Initializable {
         });
 
         loadAndDisplayResults();
+
+        // --- ONNX Export Visibility ---
+        List<ExecutionResult> results = appStateService.getExecutionResults();
+        boolean hasOnnx = results != null && results.stream().anyMatch(r -> r.getOnnxModelPath() != null);
+        if (exportOnnxButton != null) {
+            exportOnnxButton.setVisible(hasOnnx);
+            exportOnnxButton.setManaged(hasOnnx);
+        }
     }
 
     private void setupTableColumns() {
@@ -152,6 +163,9 @@ public class ResultsViewController implements Initializable {
         };
     }
 
+    @FXML
+    private javafx.scene.control.CheckBox showAllCheckBox;
+
     private void configureChart() {
         resultsChart.setTitle("Convergence Plot (Fitness vs Iteration)");
         chartXAxis.setLabel("Iteration");
@@ -168,35 +182,61 @@ public class ResultsViewController implements Initializable {
         lossChart.getYAxis().setLabel("Loss");
         lossChart.setAnimated(false);
         lossChart.getData().clear();
+
+        // Add listener for Show All checkbox
+        if (showAllCheckBox != null) {
+            showAllCheckBox.selectedProperty().addListener((obs, oldVal, newVal) -> {
+                loadAndDisplayResults(); // Reload chart based on new setting
+            });
+            showAllCheckBox.setSelected(true); // Default to showing all
+        }
     }
 
     private void loadAndDisplayResults() {
         List<ExecutionResult> results = appStateService.getExecutionResults();
 
-        resultsTable.getItems().clear();
+        // Don't clear table here if just refreshing chart, but for simplicity we reload
+        // all
+        if (resultsTable.getItems().isEmpty() && results != null) {
+            resultsTable.setItems(FXCollections.observableArrayList(results));
+        }
+
         resultsChart.getData().clear();
         lossChart.getData().clear();
         performanceChart.getData().clear();
         confusionMatrixGrid.getChildren().clear();
 
         if (results != null && !results.isEmpty()) {
-            ObservableList<ExecutionResult> observableResults = FXCollections.observableArrayList(results);
-            resultsTable.setItems(observableResults);
-            populateChart(observableResults);
+            ObservableList<ExecutionResult> observableResults = resultsTable.getItems();
+
+            // Logic for Chart Filtering
+            boolean showAll = showAllCheckBox != null && showAllCheckBox.isSelected();
+            ExecutionResult selected = resultsTable.getSelectionModel().getSelectedItem();
+
+            if (showAll || selected == null) {
+                populateChart(observableResults);
+            } else {
+                populateChart(FXCollections.observableArrayList(selected));
+            }
+
             populatePerformanceChart(observableResults);
 
-            // Populate Stat Cards
-            ExecutionResult bestResult = results.stream()
-                    .max(Comparator.comparingDouble(ExecutionResult::getAccuracy))
-                    .orElse(null);
+            // Only update stats/selection if this is the initial load (table empty or
+            // selection empty)
+            if (selected == null) {
+                ExecutionResult bestResult = results.stream()
+                        .max(Comparator.comparingDouble(ExecutionResult::getAccuracy))
+                        .orElse(null);
 
-            if (bestResult != null) {
-                bestAccuracyLabel.setText(String.format("%.2f%%", bestResult.getAccuracy() * 100));
-                bestAlgoLabel.setText("Algorithm: " + bestResult.getAlgorithmName());
-                originalFeaturesLabel.setText("Original: " + bestResult.getOriginalFeatures());
-
-                // Select best result by default to show its confusion matrix
-                resultsTable.getSelectionModel().select(bestResult);
+                if (bestResult != null) {
+                    bestAccuracyLabel.setText(String.format("%.2f%%", bestResult.getAccuracy() * 100));
+                    bestAlgoLabel.setText("Algorithm: " + bestResult.getAlgorithmName());
+                    originalFeaturesLabel.setText("Original: " + bestResult.getOriginalFeatures());
+                    resultsTable.getSelectionModel().select(bestResult);
+                }
+            } else {
+                // Restore selection stats
+                populateConfusionMatrix(selected);
             }
 
             double avgSelected = results.stream()
@@ -218,12 +258,13 @@ public class ResultsViewController implements Initializable {
     private void populateChart(ObservableList<ExecutionResult> results) {
         for (ExecutionResult result : results) {
             List<Double> history = result.getFitnessHistory();
-            if (history != null && !history.isEmpty()) {
-                // Fitness Series
-                XYChart.Series<Number, Number> fitnessSeries = new XYChart.Series<>();
-                fitnessSeries.setName(result.getAlgorithmName());
+            // List<Double> avgHistory = result.getAvgFitnessHistory();
+            // List<Double> diversityHistory = result.getPopulationDiversityHistory();
 
-                // Loss Series
+            if (history != null && !history.isEmpty()) {
+                XYChart.Series<Number, Number> fitnessSeries = new XYChart.Series<>();
+                fitnessSeries.setName(result.getAlgorithmName()); // Simplified name
+
                 XYChart.Series<Number, Number> lossSeries = new XYChart.Series<>();
                 lossSeries.setName(result.getAlgorithmName());
 
@@ -232,6 +273,7 @@ public class ResultsViewController implements Initializable {
                     fitnessSeries.getData().add(new XYChart.Data<>(i + 1, fitness));
                     lossSeries.getData().add(new XYChart.Data<>(i + 1, 1.0 - fitness));
                 }
+
                 resultsChart.getData().add(fitnessSeries);
                 lossChart.getData().add(lossSeries);
             }
@@ -361,16 +403,70 @@ public class ResultsViewController implements Initializable {
 
         File file = fileChooser.showSaveDialog(getStage());
         if (file != null) {
-            if (!file.getName().toLowerCase().endsWith(".json")) {
-                file = new File(file.getParentFile(), file.getName() + ".json");
-            }
+            File finalFile = file.getName().toLowerCase().endsWith(".json") ? file
+                    : new File(file.getParentFile(), file.getName() + ".json");
+
+            // Async Save Task
+            javafx.concurrent.Task<Void> saveTask = new javafx.concurrent.Task<>() {
+                @Override
+                protected Void call() throws Exception {
+                    objectMapper.writeValue(finalFile, results);
+                    return null;
+                }
+            };
+
+            saveTask.setOnSucceeded(e -> showAlert(Alert.AlertType.INFORMATION, "Save Successful",
+                    "Results saved to:\n" + finalFile.getAbsolutePath()));
+
+            saveTask.setOnFailed(e -> {
+                Throwable ex = saveTask.getException();
+                LogService.error("ResultsView", "Error during JSON serialization: " + ex.getMessage());
+                showAlert(Alert.AlertType.ERROR, "Save Failed", "Error during JSON serialization:\n" + ex.getMessage());
+            });
+
+            new Thread(saveTask).start();
+        }
+    }
+
+    @FXML
+    private void handleExportOnnx() {
+        List<ExecutionResult> results = resultsTable.getItems();
+        if (results == null || results.isEmpty())
+            return;
+
+        // Find result with ONNX path
+        ExecutionResult onnxResult = results.stream()
+                .filter(r -> r.getOnnxModelPath() != null)
+                .findFirst()
+                .orElse(null);
+
+        if (onnxResult == null) {
+            showAlert(Alert.AlertType.WARNING, "No Model", "No exported ONNX model found.");
+            return;
+        }
+
+        File sourceFile = new File(onnxResult.getOnnxModelPath());
+        if (!sourceFile.exists()) {
+            showAlert(Alert.AlertType.ERROR, "File Missing",
+                    "The temporary model file is missing:\n" + sourceFile.getAbsolutePath());
+            return;
+        }
+
+        FileChooser fileChooser = new FileChooser();
+        fileChooser.setTitle("Save ONNX Model");
+        fileChooser.getExtensionFilters().add(new FileChooser.ExtensionFilter("ONNX Model (*.onnx)", "*.onnx"));
+        fileChooser.setInitialFileName("model_" + System.currentTimeMillis() + ".onnx");
+
+        File destFile = fileChooser.showSaveDialog(getStage());
+        if (destFile != null) {
             try {
-                objectMapper.writeValue(file, results);
-                showAlert(Alert.AlertType.INFORMATION, "Save Successful",
-                        "Results saved to:\n" + file.getAbsolutePath());
-            } catch (Exception e) {
-                e.printStackTrace();
-                showAlert(Alert.AlertType.ERROR, "Save Failed", "Error during JSON serialization:\n" + e.getMessage());
+                java.nio.file.Files.copy(sourceFile.toPath(), destFile.toPath(),
+                        java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+                showAlert(Alert.AlertType.INFORMATION, "Export Successful",
+                        "Model saved to:\n" + destFile.getAbsolutePath());
+            } catch (IOException e) {
+                LogService.error("ResultsView", "ONNX Copy Failed: " + e.getMessage());
+                showAlert(Alert.AlertType.ERROR, "Export Failed", "Could not save model:\n" + e.getMessage());
             }
         }
     }
@@ -415,7 +511,7 @@ public class ResultsViewController implements Initializable {
                         "Results exported to:\n" + file.getAbsolutePath());
 
             } catch (IOException e) {
-                e.printStackTrace();
+                LogService.error("ResultsView", "Could not export results to CSV: " + e.getMessage());
                 showAlert(Alert.AlertType.ERROR, "Export Failed",
                         "Could not export results to CSV file:\n" + e.getMessage());
             }
@@ -433,7 +529,8 @@ public class ResultsViewController implements Initializable {
         if (onBackAction != null) {
             onBackAction.run();
         } else {
-            System.out.println("Back button clicked, but no action defined.");
+            com.example.automl_prototype_1.service.LogService.warn("ResultsView",
+                    "Back button clicked, but no action defined.");
         }
     }
 

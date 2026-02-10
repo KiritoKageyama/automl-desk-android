@@ -3,6 +3,7 @@ package com.example.automl_prototype_1.viewmodel;
 import com.example.automl_prototype_1.model.Dataset;
 
 import com.example.automl_prototype_1.service.AppStateService;
+
 import com.example.automl_prototype_1.service.IClassifier;
 
 import com.example.automl_prototype_1.dataprovider.CsvDataProvider;
@@ -100,6 +101,60 @@ public class AlgoSelectViewModel {
         saSelected.addListener(algoListener);
         gwoSelected.addListener(algoListener);
         deSelected.addListener(algoListener);
+
+        // --- Advanced Mode Bindings ---
+        isAdvancedMode.set(appStateService.isAdvancedMode());
+        forceGpu.set(appStateService.isForceGpu());
+        if (appStateService.getManualTrialsOverride() != null)
+            manualTrials.set(String.valueOf(appStateService.getManualTrialsOverride()));
+        if (appStateService.getManualIterationsOverride() != null)
+            manualIterations.set(String.valueOf(appStateService.getManualIterationsOverride()));
+
+        manualTrials.addListener((obs, old, val) -> {
+            try {
+                if (val == null || val.trim().isEmpty()) {
+                    appStateService.setManualTrialsOverride(null);
+                } else {
+                    appStateService.setManualTrialsOverride(Integer.parseInt(val.trim()));
+                }
+            } catch (NumberFormatException e) {
+                /* Ignore invalid input */ }
+        });
+
+        manualIterations.addListener((obs, old, val) -> {
+            try {
+                if (val == null || val.trim().isEmpty()) {
+                    appStateService.setManualIterationsOverride(null);
+                } else {
+                    appStateService.setManualIterationsOverride(Integer.parseInt(val.trim()));
+                }
+            } catch (NumberFormatException e) {
+                /* Ignore invalid input */ }
+        });
+
+        forceGpu.addListener((obs, old, val) -> appStateService.setForceGpu(val));
+    }
+
+    // --- Advanced Properties ---
+    private final BooleanProperty isAdvancedMode = new SimpleBooleanProperty();
+    private final StringProperty manualTrials = new SimpleStringProperty();
+    private final StringProperty manualIterations = new SimpleStringProperty();
+    private final BooleanProperty forceGpu = new SimpleBooleanProperty();
+
+    public BooleanProperty isAdvancedModeProperty() {
+        return isAdvancedMode;
+    }
+
+    public StringProperty manualTrialsProperty() {
+        return manualTrials;
+    }
+
+    public StringProperty manualIterationsProperty() {
+        return manualIterations;
+    }
+
+    public BooleanProperty forceGpuProperty() {
+        return forceGpu;
     }
 
     private void updateSelectedAlgorithms() {
@@ -188,24 +243,30 @@ public class AlgoSelectViewModel {
             case "SVM" -> new com.example.automl_prototype_1.classifier.SvmClassifier();
 
             // GPU Variants
-            case "GPU-KNN" -> new com.example.automl_prototype_1.classifier.GpuKnnClassifier();
+            // GPU Variants (Standardized)
             case "GPU-Logistic Regression" -> new com.example.automl_prototype_1.classifier.GpuLogisticRegression();
-            case "Random Forest (GPU Accelerated)" ->
-                new com.example.automl_prototype_1.classifier.GpuRandomForestClassifier(); // Auto-bridges
-            case "SVM (Linear GPU)" -> new com.example.automl_prototype_1.classifier.GpuSvmClassifier();
-            case "XGBoost (GPU Accelerated)" -> new com.example.automl_prototype_1.classifier.GpuXGBoostClassifier(); // Old
-                                                                                                                      // wrapper
 
-            // New Python Bridge Variants
-            case "XGBoost (Python/GPU Bridge)" ->
-                new com.example.automl_prototype_1.classifier.GpuPythonXGBoostClassifier();
-            case "SVM (Python/GPU/RBF Bridge)" ->
+            case "KNN (GPU Accelerated)" ->
+                new com.example.automl_prototype_1.classifier.GpuKnnClassifier();
+
+            case "Random Forest (GPU Accelerated)" ->
+                new com.example.automl_prototype_1.classifier.GpuRandomForestClassifier();
+
+            case "SVM (GPU Accelerated)" ->
                 new com.example.automl_prototype_1.classifier.GpuPythonSvmClassifier();
-            case "AdaBoost (Python)" -> new com.example.automl_prototype_1.classifier.PythonAdaBoostClassifier();
-            case "Gradient Boosting (Python)" ->
-                new com.example.automl_prototype_1.classifier.PythonGradientBoostingClassifier();
-            case "Decision Tree (Python)" ->
-                new com.example.automl_prototype_1.classifier.PythonDecisionTreeClassifier();
+
+            case "XGBoost (GPU Accelerated)" ->
+                new com.example.automl_prototype_1.classifier.GpuPythonXGBoostClassifier();
+
+            case "CatBoost (GPU Accelerated)" ->
+                new com.example.automl_prototype_1.classifier.GpuPythonCatBoostClassifier();
+
+            case "LightGBM (GPU Accelerated)" ->
+                new com.example.automl_prototype_1.classifier.GpuPythonLightGbmClassifier();
+
+            // Legacy Fallbacks
+            case "SVM (Linear GPU)" ->
+                new com.example.automl_prototype_1.classifier.GpuPythonSvmClassifier(1.0, "linear");
 
             default ->
                 // Fallback
@@ -221,19 +282,24 @@ public class AlgoSelectViewModel {
         classifiers.add("XGBoost");
 
         if (com.example.automl_prototype_1.service.HardwareAcceleratorService.isGpuAvailable()) {
-            classifiers.add("GPU-KNN");
-            classifiers.add("GPU-Logistic Regression");
-            classifiers.add("Random Forest (GPU Accelerated)");
-            classifiers.add("XGBoost (GPU Accelerated)"); // Old wrapper
-            classifiers.add("SVM (Linear GPU)"); // Existing Aparapi
+            boolean pythonAvailable = com.example.automl_prototype_1.service.PythonExecutionService.getInstance()
+                    .isAvailable();
 
-            // --- New Python Bridge Options ---
-            if (com.example.automl_prototype_1.service.PythonExecutionService.getInstance().isAvailable()) {
-                classifiers.add("XGBoost (Python/GPU Bridge)");
-                classifiers.add("SVM (Python/GPU/RBF Bridge)");
-                classifiers.add("AdaBoost (Python)");
-                classifiers.add("Gradient Boosting (Python)");
-                classifiers.add("Decision Tree (Python)");
+            // Native/Legacy GPU
+            classifiers.add("GPU-Logistic Regression");
+
+            if (pythonAvailable) {
+                // Bridge-based GPU Classifiers (Standardized Names)
+                classifiers.add("KNN (GPU Accelerated)");
+                classifiers.add("Random Forest (GPU Accelerated)");
+                classifiers.add("SVM (GPU Accelerated)");
+                classifiers.add("XGBoost (GPU Accelerated)");
+                classifiers.add("CatBoost (GPU Accelerated)");
+                classifiers.add("LightGBM (GPU Accelerated)");
+            } else {
+                // Fallback for when Python is missing but GPU is present (Legacy Java/Aparapi)
+                classifiers.add("Random Forest (GPU Accelerated)");
+                classifiers.add("SVM (Linear GPU)");
             }
         }
         return classifiers;

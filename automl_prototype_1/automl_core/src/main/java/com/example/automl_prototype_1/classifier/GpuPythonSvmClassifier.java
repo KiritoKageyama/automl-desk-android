@@ -1,24 +1,24 @@
 package com.example.automl_prototype_1.classifier;
 
 import com.example.automl_prototype_1.service.IClassifier;
+import com.example.automl_prototype_1.service.IGpuCachedClassifier;
 import com.example.automl_prototype_1.service.PythonExecutionService;
 import com.example.automl_prototype_1.service.LogService;
-import java.io.File;
-import java.io.BufferedWriter;
-import java.io.FileWriter;
-import java.io.IOException;
-import java.util.UUID;
-import java.util.Scanner;
+import com.example.automl_prototype_1.service.agentic.IInferenceEngine;
+import com.example.automl_prototype_1.service.agentic.PythonInferenceEngine;
 
 /**
  * A Python-bridged implementation of SVM.
  * This version supports true GPU acceleration for RBF/Poly kernels via cuML.
  */
-public class GpuPythonSvmClassifier implements IClassifier {
+public class GpuPythonSvmClassifier implements IClassifier, IGpuCachedClassifier {
 
     private final double C;
     private final String kernel;
-    private File pythonModelPath;
+    private final ThreadLocal<String> pythonModelId = new ThreadLocal<>();
+    private final ThreadLocal<String> onnxModelPath = new ThreadLocal<>();
+    private final IInferenceEngine pythonEngine = new PythonInferenceEngine();
+    private final IInferenceEngine onnxEngine = new com.example.automl_prototype_1.service.agentic.OnnxInferenceEngine();
 
     public GpuPythonSvmClassifier() {
         this(1.0, "rbf");
@@ -31,7 +31,7 @@ public class GpuPythonSvmClassifier implements IClassifier {
 
     @Override
     public String getName() {
-        return "SVM (Python/GPU Bridge - " + kernel + ")";
+        return "SVM (Hybrid Python/ONNX/GPU - " + kernel + ")";
     }
 
     @Override
@@ -39,95 +39,146 @@ public class GpuPythonSvmClassifier implements IClassifier {
         if (features.length == 0 || features[0].length == 0)
             return;
 
+        // Strict GPU Execution
         if (PythonExecutionService.getInstance().isAvailable()) {
             try {
-                LogService.info("GpuPySVM", "Preparing SVM Python training (kernel=" + kernel + ")...");
-                File trainFile = createTempCsv(features, labels);
-                File modelFile = File.createTempFile("svm_model_" + UUID.randomUUID(), ".pkl");
-
-                File scriptFile = PythonExecutionService.getInstance().extractScriptToTemp("train_svm.py");
-
-                boolean success = PythonExecutionService.getInstance().trainModel(
-                        scriptFile,
-                        trainFile,
-                        modelFile,
-                        "--C", String.valueOf(C),
-                        "--kernel", kernel);
-
-                if (success) {
-                    this.pythonModelPath = modelFile;
-                    LogService.info("GpuPySVM", "Training successful. Model saved.");
+                if (!PythonExecutionService.getInstance().isServerRunning()) {
+                    PythonExecutionService.getInstance().startGpuServer();
                 }
-                trainFile.delete();
+
+                java.util.Map<String, Object> params = new java.util.HashMap<>();
+                params.put("C", C);
+                params.put("kernel", kernel);
+
+                java.util.concurrent.CompletableFuture<Object> future = com.example.automl_prototype_1.service.GpuBatchService
+                        .getInstance()
+                        .submitTrain("SVM", features, labels, params);
+
+                Object result = future.get();
+                if (result instanceof String) {
+                    String rawStr = (String) result;
+                    if (rawStr.contains("|")) {
+                        String[] parts = rawStr.split("\\|");
+                        this.pythonModelId.set(parts[0]);
+                        this.onnxModelPath.set(parts[1]);
+                        LogService.info("GpuPySVM", "Training Success. ONNX Enabled: " + parts[1]);
+                    } else {
+                        this.pythonModelId.set(rawStr);
+                        this.onnxModelPath.remove();
+                    }
+                    return;
+                }
             } catch (Exception e) {
-                LogService.error("GpuPySVM", "Training failed: " + e.getMessage());
+                // Critical Error - STOP and ASK
+                String msg = "CRITICAL: GPU SVM Training Failed. " + e.getMessage();
+                LogService.error("GpuPySVM", msg);
+                throw new RuntimeException(msg + " Please switch to CPU version.");
             }
-        } else {
-            LogService.error("GpuPySVM", "Python not available. Cannot train.");
         }
+
+        // If Python not available at all but user selected GPU Wrapper
+        String msg = "CRITICAL: GPU/Python Bridge unavailable but GPU classifier selected.";
+        LogService.error("GpuPySVM", msg);
+        throw new RuntimeException(msg + " Please enable GPU in settings or switch to standard SVM.");
     }
 
     @Override
     public int[] predict(double[][] features) {
-        if (this.pythonModelPath != null && PythonExecutionService.getInstance().isAvailable()) {
+        String onnxPath = this.onnxModelPath.get();
+        if (onnxPath != null) {
             try {
-                File inputFile = createTempCsv(features, null);
-                File outputFile = File.createTempFile("preds_svm_" + UUID.randomUUID(), ".csv");
+                return onnxEngine.predict(onnxPath, features).get();
+            } catch (Exception e) {
+                LogService.warn("GpuPySVM", "ONNX Inference failed. Fallback to Python.");
+            }
+        }
 
-                File scriptFile = PythonExecutionService.getInstance().extractScriptToTemp("predict.py");
+        String modelId = this.pythonModelId.get();
+        if (modelId != null && PythonExecutionService.getInstance().isAvailable()) {
+            try {
+                return pythonEngine.predict(modelId, features).get();
+            } catch (Exception e) {
+                String msg = "CRITICAL: GPU SVM Prediction Failed. " + e.getMessage();
+                LogService.error("GpuPySVM", msg);
+                throw new RuntimeException(msg);
+            }
+        }
+        throw new RuntimeException("CRITICAL: SVM Model not trained or GPU unavailable.");
+    }
 
-                boolean success = PythonExecutionService.getInstance().predict(
-                        scriptFile,
-                        this.pythonModelPath,
-                        inputFile,
-                        outputFile);
+    @Override
+    public void trainCached(String datasetId, int[] featureIndices, int[] rowIndices) {
+        if (PythonExecutionService.getInstance().isAvailable()) {
+            try {
+                if (!PythonExecutionService.getInstance().isServerRunning()) {
+                    PythonExecutionService.getInstance().startGpuServer();
+                }
 
-                if (success) {
-                    return readPredictions(outputFile);
+                java.util.Map<String, Object> params = new java.util.HashMap<>();
+                params.put("C", C);
+                params.put("kernel", kernel);
+
+                java.util.concurrent.CompletableFuture<Object> future = com.example.automl_prototype_1.service.GpuBatchService
+                        .getInstance()
+                        .submitTrainCached("SVM", datasetId, featureIndices, rowIndices, params);
+
+                Object result = future.get();
+                if (result instanceof String) {
+                    String rawStr = (String) result;
+                    if (rawStr.contains("|")) {
+                        String[] parts = rawStr.split("\\|");
+                        this.pythonModelId.set(parts[0]);
+                        this.onnxModelPath.set(parts[1]);
+                    } else {
+                        this.pythonModelId.set(rawStr);
+                        this.onnxModelPath.remove();
+                    }
                 }
             } catch (Exception e) {
-                LogService.error("GpuPySVM", "Prediction failed: " + e.getMessage());
+                String msg = "CRITICAL: GPU SVM Cached Training Failed. " + e.getMessage();
+                LogService.error("GpuPySVM", msg);
+                throw new RuntimeException(msg);
             }
+        } else {
+            throw new RuntimeException("GPU/Python Bridge unavailable for Cached Training");
         }
-        return new int[features.length];
     }
 
-    // Helper
-    private File createTempCsv(double[][] features, int[] labels) throws IOException {
-        File temp = File.createTempFile("data_" + UUID.randomUUID(), ".csv");
-        try (BufferedWriter writer = new BufferedWriter(new FileWriter(temp))) {
-            for (int i = 0; i < features[0].length; i++)
-                writer.write("F" + i + ",");
-            writer.write("Class");
-            writer.newLine();
-            for (int i = 0; i < features.length; i++) {
-                for (int j = 0; j < features[i].length; j++)
-                    writer.write(features[i][j] + ",");
-                if (labels != null)
-                    writer.write(String.valueOf(labels[i]));
-                else
-                    writer.write("0");
-                writer.newLine();
+    @Override
+    public int[] predictCached(String datasetId, int[] featureIndices, int[] rowIndices) {
+        String modelId = this.pythonModelId.get();
+        if (modelId != null && PythonExecutionService.getInstance().isAvailable()) {
+            try {
+                return submitPredictCachedAsync(modelId, datasetId, featureIndices, rowIndices).get();
+            } catch (Exception e) {
+                throw new RuntimeException("GPU SVM Cached Prediction Failed", e);
             }
         }
-        return temp;
+        return new int[0];
     }
 
-    private int[] readPredictions(File csvFile) throws IOException {
-        try (Scanner scanner = new Scanner(csvFile)) {
-            if (!scanner.hasNext())
-                return new int[0];
-            String content = scanner.useDelimiter("\\A").next();
-            String[] tokens = content.trim().split("[,\\s]+");
-            int[] preds = new int[tokens.length];
-            for (int i = 0; i < tokens.length; i++) {
-                try {
-                    preds[i] = (int) Double.parseDouble(tokens[i]);
-                } catch (Exception e) {
-                    preds[i] = 0;
-                }
-            }
-            return preds;
+    @Override
+    public java.util.concurrent.CompletableFuture<String> submitTrainCachedAsync(String datasetId, int[] featureIndices,
+            int[] rowIndices) {
+        if (!PythonExecutionService.getInstance().isAvailable()) {
+            java.util.concurrent.CompletableFuture<String> f = new java.util.concurrent.CompletableFuture<>();
+            f.completeExceptionally(new RuntimeException("Python Bridge unavailable"));
+            return f;
         }
+        java.util.Map<String, Object> params = new java.util.HashMap<>();
+        params.put("C", C);
+        params.put("kernel", kernel);
+
+        return com.example.automl_prototype_1.service.GpuBatchService.getInstance()
+                .submitTrainCached("SVM", datasetId, featureIndices, rowIndices, params)
+                .thenApply(res -> (String) res);
+    }
+
+    @Override
+    public java.util.concurrent.CompletableFuture<int[]> submitPredictCachedAsync(String modelId, String datasetId,
+            int[] featureIndices, int[] rowIndices) {
+        return com.example.automl_prototype_1.service.GpuBatchService.getInstance()
+                .submitPredictCached(modelId, datasetId, featureIndices, rowIndices)
+                .thenApply(res -> (int[]) res);
     }
 }
