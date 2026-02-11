@@ -23,6 +23,7 @@ try:
     import pandas as pd
     from sklearn.ensemble import RandomForestClassifier
     from sklearn.svm import SVC
+    from sklearn.neural_network import MLPClassifier
     # --- Granular GPU Checks ---
     try:
         import cuml
@@ -78,6 +79,19 @@ try:
         ONNX_AVAILABLE = False
         print("[Server] ONNX tools NOT found. Model Export DISABLED.")
 
+    # Phase 7: PyTorch Support
+    try:
+        import torch
+        # We assume mlp_algorithm is in the same directory or path
+        # In a real deployment, we might need sys.path.append
+        sys.path.append(os.getcwd()) 
+        import mlp_algorithm
+        TORCH_AVAILABLE = True
+        print("[Server] PyTorch found. GPU MLP ENABLED.")
+    except ImportError as e:
+        TORCH_AVAILABLE = False
+        print(f"[Server] PyTorch/MLP Script NOT found ({e}). MLP will use CPU (Sklearn).")
+
 except ImportError as e:
     print(f"[Server] CRITICAL: Failed to import basic libraries: {e}")
     sys.exit(1)
@@ -91,6 +105,32 @@ def export_to_onnx(model, model_uid, X_sample, algo_type):
             os.makedirs(temp_dir, exist_ok=True)
         onnx_filename = f"model_{model_uid}.onnx"
         onnx_path = os.path.join(temp_dir, onnx_filename)
+
+        # PyTorch / Transformer Models
+        if algo_type in ['MLP', 'CNN']:
+             if TORCH_AVAILABLE:
+                  # Input shape depends on model. MLP: (1, n_features), CNN: (1, 1, H, W) or similar
+                  # We need X_sample to infer shape.
+                  dummy_input = torch.from_numpy(X_sample[:1].astype(np.float32))
+                  torch.onnx.export(model, dummy_input, onnx_path, verbose=False)
+                  return onnx_path
+        
+        if algo_type == 'BERT':
+             if TORCH_AVAILABLE:
+                  # BERT is complex, usually requires tokenizer input (input_ids, attention_mask)
+                  # For prototype, we might skip true ONNX or use a dummy input if we have the tokenizer.
+                  # bert_finetune.py might return a wrapper that handles this?
+                  # For now, we'll try standard export if it's a torch module
+                  if isinstance(model, torch.nn.Module):
+                       # We need dummy input_ids and attention_mask
+                       # This is hard without the tokenizer which is inside bert_finetune
+                       # Let's try to load them or fail gracefully
+                       print("[Server] ONNX Export for BERT is experimental.")
+                       # dummy_input = (torch.zeros((1, 128), dtype=torch.long), torch.zeros((1, 128), dtype=torch.long))
+                       # torch.onnx.export(model, dummy_input, onnx_path, input_names=['input_ids', 'attention_mask'])
+                       # return onnx_path
+                       return None 
+
         if algo_type == 'XGB':
             model.save_model(onnx_path)
             return onnx_path
@@ -170,6 +210,8 @@ class GpuRequestHandler(http.server.BaseHTTPRequestHandler):
                 self.handle_predict_batch(request)
             elif action == 'UPLOAD_DATASET':
                 self.handle_upload_dataset(request)
+            elif action == 'EXPORT_MODEL':
+                self.handle_export_model(request)
             elif action == 'CLEANUP':
                 self.handle_cleanup(request)
             else:
@@ -501,6 +543,114 @@ class GpuRequestHandler(http.server.BaseHTTPRequestHandler):
                     else:
                         results.append({"id": job_id, "error": "LightGBM not installed", "success": False})
                         continue
+
+    # Phase 7: PyTorch Support
+    try:
+        import torch
+        import mlp_algorithm
+        TORCH_AVAILABLE = True
+        print("[Server] PyTorch found. GPU MLP ENABLED.")
+    except ImportError:
+        TORCH_AVAILABLE = False
+        print("[Server] PyTorch NOT found. MLP will use CPU (Sklearn).")
+
+    # ... (existing imports)
+
+# ... inside handle_train_batch ...
+
+                # --- MLP (Neural Network) ---
+                elif algo_type == 'MLP':
+                    # Parse hidden layers: "100,50" -> (100, 50)
+                    layers_str = str(params.get('hidden_layer_sizes', "100")).strip()
+                    try:
+                        hidden_layers = tuple(map(int, layers_str.split(',')))
+                    except:
+                        hidden_layers = (100,)
+                    
+                    activation = params.get('activation', 'relu')
+                    solver = params.get('solver', 'adam')
+                    alpha = float(params.get('alpha', 0.0001))
+                    max_iter = int(params.get('max_iter', 200))
+
+                    if TORCH_AVAILABLE:
+                         # Use our new PyTorch backend
+                         try:
+                             print("[Server] Training MLP with PyTorch (GPU if available)...")
+                             model = mlp_algorithm.train(X, y, params)
+                         except Exception as torch_err:
+                             print(f"[Server] PyTorch MLP Failed ({torch_err}). Falling back to Sklearn.")
+                             model = MLPClassifier(hidden_layer_sizes=hidden_layers, activation=activation, solver=solver, alpha=alpha, max_iter=max_iter, random_state=42)
+                             model.fit(X, y)
+                    else:
+                        # Sklearn MLP is CPU-based (standard)
+                        model = MLPClassifier(hidden_layer_sizes=hidden_layers, activation=activation, solver=solver, alpha=alpha, max_iter=max_iter, random_state=42)
+                        model.fit(X, y)
+                    
+                    print(f"[Server] MLP trained. Layers={hidden_layers}")
+
+    try:
+        sys.path.append(os.getcwd()) 
+        import bert_finetune
+        BERT_AVAILABLE = True
+        print("[Server] BERT Script found. Gen AI Text Training ENABLED.")
+    except ImportError as e:
+        BERT_AVAILABLE = False
+        print(f"[Server] BERT Script NOT found ({e}). Gen AI Disabled.")
+
+# ... inside handle_train_batch ...
+
+                # --- BERT (Gen AI) ---
+                elif algo_type == 'BERT':
+                    if not BERT_AVAILABLE:
+                         raise Exception("BERT script not found or transformers library missing.")
+                    
+                    # Check for text paths in params
+                    text_paths = params.get('text_paths')
+                    
+                    if text_paths:
+                        # Use paths as X
+                        print(f"[Server] Training BERT on {len(text_paths)} text files...")
+                        model = bert_finetune.train(text_paths, y, params)
+                    else:
+                        raise Exception("BERT requires 'text_paths' parameter.")
+                        
+                    print(f"[Server] BERT Model Trained.")
+
+# ... existing code ...
+
+                    script_path = params.get('script_path')
+                    if not script_path or not os.path.exists(script_path):
+                        raise Exception(f"Custom script not found: {script_path}")
+                    
+                    try:
+                        import importlib.util
+                        # Load module dynamically
+                        spec = importlib.util.spec_from_file_location("custom_model_" + job_id, script_path)
+                        if spec is None or spec.loader is None:
+                             raise Exception(f"Failed to load spec for {script_path}")
+                        
+                        module = importlib.util.module_from_spec(spec)
+                        try:
+                            sys.modules["custom_model_" + job_id] = module
+                            spec.loader.exec_module(module)
+                        except Exception as load_err:
+                             raise Exception(f"Script Execution Failed: {load_err}")
+
+                        # Expect a 'train' or 'fit' function
+                        if hasattr(module, 'train'):
+                            model = module.train(X, y, params)
+                        elif hasattr(module, 'fit'):
+                            model = module.fit(X, y, params)
+                        else:
+                            raise Exception("Custom script must define a 'train(X, y, params)' or 'fit(X, y, params)' function.")
+                            
+                        print(f"[Server] Custom Script executed. Model type: {type(model)}")
+                        
+                    except Exception as e:
+                        print(f"[Server] Custom Script Error: {e}")
+                        traceback.print_exc()
+                        raise e
+
                 if model:
                     # If we fell back, model is fitted. Use it.
                     # Note: We skipped explicit fit() calls above for non-GPU paths to simplify structure, 
@@ -658,6 +808,60 @@ class GpuRequestHandler(http.server.BaseHTTPRequestHandler):
         except Exception as e:
             traceback.print_exc()
             self._send_response(500, {'error': f"Arrow Upload Failed: {str(e)}"})
+
+    def handle_export_model(self, request):
+        """
+        Expects: {"model_id": "uuid"}
+        Returns: {"path": "/path/to/model.onnx", "success": true}
+        """
+        model_id = request.get('model_id')
+        if not model_id or model_id not in MODELS:
+            self._send_response(404, {'error': 'Model not found'})
+            return
+
+        # We assume X_sample usually cached or we try to synthesize based on model input checks?
+        # Actually export_to_onnx needs X_sample.
+        # Ideally we stored X_sample during training or reference it from DATASETS?
+        # For this prototype, we'll check if we can get a sample from a recent dataset
+        # OR we just rely on what export_to_onnx can do without it (limited)
+        
+        # Hack: Use a dummy sample if we have a dataset loaded
+        # We need a robust way to get shape.
+        # Let's try to find *any* dataset that fits? No.
+        # We will assume export_to_onnx runs immediately after training where X is available,
+        # OR we fail if we can't find data.
+        
+        # Improvement: We can store input_shape in MODELS metadata.
+        # For now, let's create a dummy input based on model attributes if possible.
+        
+        dataset_id = request.get('dataset_id') # Optional: user can provide dataset context
+        X_sample = np.zeros((1, 10)) # Fallback default
+        
+        if dataset_id and dataset_id in DATASETS:
+             ds = DATASETS[dataset_id]
+             X_obj = ds['X']
+             if hasattr(X_obj, 'iloc'): X_sample = X_obj.iloc[:1].to_numpy()
+             else: X_sample = X_obj[:1]
+        
+        model = MODELS[model_id]
+        
+        # Try to infer type
+        algo_type = 'UNKNOWN'
+        if hasattr(model, 'predict'):
+             # Heuristics
+             name = str(type(model))
+             if 'RandomForest' in name: algo_type = 'RF'
+             elif 'XGB' in name: algo_type = 'XGB'
+             elif 'MLP' in name: algo_type = 'MLP'
+             elif 'SVC' in name: algo_type = 'SVM'
+             elif 'Torch' in name or 'Net' in name: algo_type = 'MLP' # Broad catch
+
+        onnx_path = export_to_onnx(model, model_id, X_sample, algo_type)
+        
+        if onnx_path:
+             self._send_response(200, {'path': onnx_path, 'success': True})
+        else:
+             self._send_response(500, {'error': 'Export failed or not supported'})
 
     def handle_upload_dataset(self, request):
         """

@@ -34,6 +34,10 @@
             <Button fx:id="algoBtn" text="Select Algorithm" styleClass="nav-button" maxWidth="Infinity"/>
             <Button fx:id="settingsBtn" text="Settings" styleClass="nav-button" maxWidth="Infinity"/>
             <Button fx:id="simulatorBtn" text="Pipeline Simulator" styleClass="nav-button" maxWidth="Infinity"/>
+            <Button fx:id="rlLabBtn" text="RL Lab" styleClass="nav-button" maxWidth="Infinity"/>
+            <Button fx:id="visualizerBtn" text="Visualizer (Sim)" styleClass="nav-button" maxWidth="Infinity"/>
+            <Button fx:id="creatorLabBtn" text="Creator Lab (AI Architect)" styleClass="nav-button" maxWidth="Infinity"/>
+            <Button fx:id="perfHistoryBtn" text="📊 Performance History" styleClass="nav-button" maxWidth="Infinity"/>
 
             <Region prefHeight="30"/>
 
@@ -59,6 +63,8 @@
                     <Label fx:id="datasetLabel" text="No dataset selected" styleClass="sub-header-label" style="-fx-font-size: 12px; -fx-opacity: 0.8;"/>
                 </VBox>
                 <Region HBox.hgrow="ALWAYS"/>
+                <!-- Live System Stats -->
+                <Label fx:id="systemStatsLabel" text="" styleClass="sub-header-label" style="-fx-font-size: 10px; -fx-text-fill: #888; -fx-padding: 5 10 5 0;"/>
                 <!-- Resource Status Indicator -->
                 <Label fx:id="resourceStatusLabel" text="Checking Resources..." styleClass="sub-header-label" style="-fx-font-size: 11px; -fx-padding: 5 10 5 10; -fx-background-radius: 4; -fx-background-color: #eee; -fx-text-fill: #555;"/>
                 <Button text="Help" styleClass="button"/>

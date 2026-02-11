@@ -86,6 +86,53 @@ public class ConstitutionalService {
     }
 
     /**
+     * Dynamically adds a new rule to the Constitution.
+     * 
+     * @param id           Unique ID of the rule
+     * @param condition    Logic condition (e.g. algorithm == 'X')
+     * @param verdict      VETO or WARN
+     * @param reasonOrWarn The message to display
+     */
+    public void addRule(String id, String condition, String verdict, String reasonOrWarn) {
+        Rule r = new Rule();
+        r.id = id;
+        r.condition = condition;
+        r.verdict = verdict;
+        if ("VETO".equalsIgnoreCase(verdict)) {
+            r.reason = reasonOrWarn;
+        } else {
+            r.warning = reasonOrWarn;
+        }
+
+        // Remove existing if any
+        if (rules == null)
+            rules = new ArrayList<>();
+        rules.removeIf(existing -> existing.id != null && existing.id.equals(id));
+
+        rules.add(r);
+        saveRules();
+        LogService.warn("ConstitutionalService", "New Rule Added: " + id);
+    }
+
+    /** Checks if a rule with the given ID exists. */
+    public boolean hasRule(String ruleId) {
+        if (rules == null)
+            return false;
+        return rules.stream().anyMatch(r -> r.id != null && r.id.equals(ruleId));
+    }
+
+    /** Removes a rule by ID (e.g. to manually unban an algorithm). */
+    public void removeRule(String ruleId) {
+        if (rules == null)
+            return;
+        boolean removed = rules.removeIf(r -> r.id != null && r.id.equals(ruleId));
+        if (removed) {
+            saveRules();
+            LogService.info("ConstitutionalService", "Rule removed: " + ruleId);
+        }
+    }
+
+    /**
      * Evaluates a specific scenario against the Constitution.
      */
     public Verdict evaluate(MetaFeatures meta, String algorithm, String classifier) {
@@ -119,18 +166,27 @@ public class ConstitutionalService {
     private boolean checkCondition(String condition, MetaFeatures meta, String algorithm, String classifier) {
         try {
             // Replace Variables with values
-            String eval = condition
-                    .replace("meta.numInstances", String.valueOf(meta.getNumInstances()))
-                    .replace("meta.numFeatures", String.valueOf(meta.getNumFeatures()))
-                    .replace("meta.sparsity", String.valueOf(meta.getSparsity()))
-                    .replace("meta.maxSkewness", String.valueOf(meta.getMaxSkewness()))
+            String eval = condition;
+
+            if (meta != null) {
+                eval = eval
+                        .replace("meta.numInstances", String.valueOf(meta.getNumInstances()))
+                        .replace("meta.numFeatures", String.valueOf(meta.getNumFeatures()))
+                        .replace("meta.sparsity", String.valueOf(meta.getSparsity()))
+                        .replace("meta.maxSkewness", String.valueOf(meta.getMaxSkewness()));
+            }
+
+            eval = eval
                     .replace("algorithm", "'" + algorithm + "'")
-                    .replace("classifier", "'" + classifier + "'")
-                    // System Context
-                    .replace("system.freeRam", String.valueOf(systemMonitor.getFreeRamGb()))
-                    .replace("system.totalRam", String.valueOf(systemMonitor.getTotalRamGb()))
-                    .replace("system.cpuLoad", String.valueOf(systemMonitor.getCpuLoad()))
-                    .replace("system.hasGpu", String.valueOf(systemMonitor.hasGpu()));
+                    .replace("classifier", "'" + classifier + "'");
+
+            if (systemMonitor != null) {
+                eval = eval
+                        .replace("system.freeRam", String.valueOf(systemMonitor.getFreeRamGb()))
+                        .replace("system.totalRam", String.valueOf(systemMonitor.getTotalRamGb()))
+                        .replace("system.cpuLoad", String.valueOf(systemMonitor.getCpuLoad()))
+                        .replace("system.hasGpu", String.valueOf(systemMonitor.hasGpu()));
+            }
 
             // Very simple parser logic (Prototype level)
             // We split by AND / OR and evaluate atoms
@@ -205,30 +261,44 @@ public class ConstitutionalService {
         return false;
     }
 
-    // --- Dynamic Editing ---
+    // --- Code Auditing (Phase 3) ---
 
-    public void addRule(String id, String condition, String verdict, String reasonOrWarn) {
-        Rule r = new Rule();
-        r.id = id;
-        r.condition = condition;
-        r.verdict = verdict;
-        if ("VETO".equalsIgnoreCase(verdict))
-            r.reason = reasonOrWarn;
-        else
-            r.warning = reasonOrWarn;
+    /**
+     * Audits generated code against safety rules.
+     * 
+     * @param code The Java source code to check.
+     * @return A Verdict indicating if the code is safe, and if not, why.
+     */
+    public Verdict auditCode(String code) {
+        if (code == null || code.isEmpty()) {
+            return Verdict.veto("Empty code generated.");
+        }
 
-        // Remove existing with same ID
-        rules.removeIf(Existing -> Existing.id.equals(id));
-        rules.add(r);
-        saveRules();
+        for (Rule rule : rules) {
+            if ("CODE_BAN".equals(rule.type)) {
+                if (java.util.regex.Pattern.compile(rule.pattern).matcher(code).find()) {
+                    return Verdict.veto("Rule Violation [" + rule.id + "]: " + rule.reason);
+                }
+            } else if ("CODE_REQUIRE".equals(rule.type)) {
+                if (!java.util.regex.Pattern.compile(rule.pattern).matcher(code).find()) {
+                    return Verdict.veto("Rule Violation [" + rule.id + "]: " + rule.reason);
+                }
+            }
+        }
+
+        return Verdict.allow();
     }
 
     public static class Rule {
         public String id;
-        public String condition;
-        public String verdict; // VETO, WARN
+        public String condition; // For Algorithm Selection rules
+        public String verdict; // For Algorithm Selection rules (VETO, WARN)
         public String reason;
         public String warning;
+
+        // Phase 3 extensions
+        public String type; // CODE_BAN, CODE_REQUIRE
+        public String pattern; // Regex
     }
 
     public static class Verdict {

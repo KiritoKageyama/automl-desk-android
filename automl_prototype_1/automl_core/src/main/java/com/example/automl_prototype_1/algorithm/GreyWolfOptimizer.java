@@ -150,7 +150,7 @@ public class GreyWolfOptimizer extends AbstractFeatureSelectionAlgorithm {
         // Parallel update calculation
         // Note: ThreadLocalRandom is needed inside parallel stream
         // Smart Parallelism Refactor: Calculate Fitness Inside Thread Pool
-        int optimalThreads = com.example.automl_prototype_1.service.HardwareAcceleratorService
+        int optimalThreads = com.example.automl_prototype_1.gpu.HardwareAcceleratorService
                 .calculateOptimalThreadCount();
         @SuppressWarnings("resource")
         java.util.concurrent.ForkJoinPool customThreadPool = new java.util.concurrent.ForkJoinPool(optimalThreads);

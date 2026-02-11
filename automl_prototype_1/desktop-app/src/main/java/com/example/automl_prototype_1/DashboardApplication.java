@@ -37,10 +37,10 @@ public class DashboardApplication extends Application {
                 long start = System.currentTimeMillis();
 
                 // 1. Init Hardware Service (Checks CUDA/OpenCL)
-                com.example.automl_prototype_1.service.HardwareAcceleratorService.isGpuAvailable();
+                com.example.automl_prototype_1.gpu.HardwareAcceleratorService.isGpuAvailable();
 
                 // 2. Init GPU Batch Service (Spawns Python Process)
-                com.example.automl_prototype_1.service.GpuBatchService.getInstance();
+                com.example.automl_prototype_1.gpu.GpuBatchService.getInstance();
 
                 System.out.println(
                         "🔥🔥 [PRE-WARM] Resources Ready in " + (System.currentTimeMillis() - start) + "ms 🔥🔥");

@@ -1,0 +1,101 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.geometry.Insets?>
+<?import javafx.scene.canvas.Canvas?>
+<?import javafx.scene.control.Button?>
+<?import javafx.scene.control.Label?>
+<?import javafx.scene.control.Separator?>
+<?import javafx.scene.control.ListView?>
+<?import javafx.scene.control.ComboBox?>
+<?import javafx.collections.FXCollections?>
+<?import java.lang.String?>
+<?import javafx.scene.control.SplitPane?>
+<?import javafx.scene.control.ScrollPane?>
+<?import javafx.scene.control.TitledPane?>
+<?import javafx.scene.layout.HBox?>
+<?import javafx.scene.layout.Region?>
+<?import javafx.scene.layout.StackPane?>
+<?import javafx.scene.layout.VBox?>
+
+<VBox xmlns="http://javafx.com/javafx/17" xmlns:fx="http://javafx.com/fxml/1"
+      fx:controller="com.example.automl_prototype_1.controller.RlVisualizerController"
+      spacing="20" style="-fx-padding: 20;">
+
+    <Label text="Visual Reinforcement Learning Interaction" style="-fx-font-size: 24px; -fx-font-weight: bold;"/>
+    
+    <SplitPane dividerPositions="0.3" VBox.vgrow="ALWAYS">
+        <!-- LEFT: Control Panel (Scrollable) -->
+        <ScrollPane fitToWidth="true" style="-fx-background-color: transparent;">
+            <VBox spacing="10" style="-fx-padding: 10;">
+                
+                <!-- Internal Agent Card -->
+                <TitledPane text="Environment Selection" collapsible="true" expanded="true">
+                    <VBox spacing="10">
+                        <Label text="Select Environment:"/>
+                        <ComboBox fx:id="envCombo" maxWidth="Infinity"/>
+                        
+                        <Button fx:id="startBtn" text="Start Training (Demo)" maxWidth="Infinity"/>
+                        <Button fx:id="stopBtn" text="Stop" maxWidth="Infinity"/>
+                        <Button fx:id="resetBtn" text="Reset Environment" maxWidth="Infinity"/>
+                        <Separator/>
+                        <Label fx:id="statusLabel" text="Status: Ready" wrapText="true"/>
+                        <Label fx:id="rewardLabel" text="Reward: 0.0" style="-fx-font-weight: bold; -fx-text-fill: green;"/>
+                    </VBox>
+                </TitledPane>
+
+                <!-- External Agent Card -->
+                <TitledPane text="External Game Agent" collapsible="true" expanded="true">
+                    <VBox spacing="10">
+                        <Label text="Target Game Profile:"/>
+                        <ComboBox fx:id="profileCombo" maxWidth="Infinity">
+                            <items>
+                                <FXCollections fx:factory="observableArrayList">
+                                    <String fx:value="WASD (Default)"/>
+                                    <String fx:value="ARROWS (Racing)"/>
+                                    <String fx:value="TREX (Space/Duck)"/>
+                                </FXCollections>
+                            </items>
+                            <value>
+                                <String fx:value="WASD (Default)"/>
+                            </value>
+                        </ComboBox>
+                        <Button fx:id="exploreBtn" text="Start Active Exploration" maxWidth="Infinity" style="-fx-background-color: #e0f7fa; -fx-text-fill: #006064;"/>
+                        <Button fx:id="expertBtn" text="Ask Expert (T-Rex)" maxWidth="Infinity" style="-fx-background-color: #fff3e0; -fx-text-fill: #e65100;"/>
+                        <Separator/>
+                        <Button fx:id="injectStrategyBtn" text="Inject GenAI Strategy (LLM)" maxWidth="Infinity" style="-fx-background-color: #f3e5f5; -fx-text-fill: #7b1fa2;"/>
+                    </VBox>
+                </TitledPane>
+
+                <!-- User Pattern Learning Card (Behavioral Cloning) -->
+                <TitledPane text="User Pattern Learning (Clone Me)" collapsible="true" expanded="true">
+                    <VBox spacing="10">
+                        <Label text="Teach the AI by playing:" style="-fx-font-size: 11px; -fx-text-fill: grey;"/>
+                        <HBox spacing="10">
+                            <Button fx:id="recordBtn" text="Record Rec." maxWidth="Infinity" HBox.hgrow="ALWAYS" style="-fx-background-color: #ffebee; -fx-text-fill: #c62828;"/>
+                            <Button fx:id="stopRecordBtn" text="Stop" maxWidth="Infinity" HBox.hgrow="ALWAYS" disable="true"/>
+                        </HBox>
+                        <Button fx:id="trainClonedBtn" text="Train from Demo" maxWidth="Infinity" disable="true"/>
+                        <Button fx:id="kickstartBtn" text="Kickstart RL Agent (Phase 7)" maxWidth="Infinity" style="-fx-background-color: #fff9c4; -fx-text-fill: #fbc02d;" disable="true"/>
+                        <Button fx:id="runClonedBtn" text="Run Cloned Policy" maxWidth="Infinity" style="-fx-background-color: #e8f5e9; -fx-text-fill: #2e7d32;" disable="true"/>
+                    </VBox>
+                </TitledPane>
+
+                <!-- Knowledge Base Card -->
+                <TitledPane text="Cognitive Insights" collapsible="true" expanded="true">
+                    <VBox spacing="10">
+                        <Label text="Learned Rules &amp; Discoveries:" style="-fx-font-size: 11px; -fx-text-fill: grey;"/>
+                        <ListView fx:id="insightsList" prefHeight="250" VBox.vgrow="ALWAYS"/>
+                        <Button fx:id="editInsightBtn" text="Edit Selected Insight" maxWidth="Infinity"/>
+                    </VBox>
+                </TitledPane>
+
+            </VBox>
+        </ScrollPane>
+
+        <!-- RIGHT: Visualization Canvas -->
+        <StackPane style="-fx-background-color: #2b2b2b;">
+            <Canvas fx:id="envCanvas" width="600" height="600"/>
+        </StackPane>
+    </SplitPane>
+
+</VBox>

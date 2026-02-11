@@ -3,11 +3,16 @@ package com.example.automl_prototype_1.controller;
 import javafx.scene.control.Alert;
 import com.example.automl_prototype_1.algorithm.*;
 import com.example.automl_prototype_1.algorithm.AtomSearchOptimization;
-import com.example.automl_prototype_1.service.HyperparameterTuningService;
+import com.example.automl_prototype_1.service.pipeline.HyperparameterTuningService;
 import com.example.automl_prototype_1.dataprovider.CsvDataProvider;
 import com.example.automl_prototype_1.model.Dataset;
 import com.example.automl_prototype_1.model.ExecutionResult;
 import com.example.automl_prototype_1.service.*;
+import com.example.automl_prototype_1.service.pipeline.ExecutionService;
+import com.example.automl_prototype_1.service.pipeline.PreprocessorService;
+import com.example.automl_prototype_1.service.progress.ProgressTrackingService;
+import com.example.automl_prototype_1.gpu.HardwareAcceleratorService;
+import com.example.automl_prototype_1.gpu.PythonExecutionService;
 import javafx.application.Platform;
 import javafx.concurrent.Task;
 import javafx.fxml.FXML;
@@ -33,13 +38,16 @@ import java.util.Map;
 public class DashboardController {
 
     @FXML
-    private Button uploadBtn, algoBtn, runBtn, resultsBtn, settingsBtn, simulatorBtn, exitBtn;
+    private Button uploadBtn, algoBtn, runBtn, resultsBtn, settingsBtn, simulatorBtn, rlLabBtn, visualizerBtn,
+            creatorLabBtn, perfHistoryBtn, exitBtn;
     @FXML
     private StackPane mainContent;
     @FXML
     private Label datasetLabel;
     @FXML
     private Label resourceStatusLabel; // Phase 6 UI Indicator
+    @FXML
+    private Label systemStatsLabel; // Live system stats
     @FXML
     private StackPane chatContainer;
     @FXML
@@ -71,6 +79,9 @@ public class DashboardController {
         // Phase 6 Step 6: UI Resource Mode
         checkResourceMode();
 
+        // Live system stats polling (RAM/CPU/GPU) in header
+        startSystemStatsPolling();
+
         // Set initial view
         loadView("upload_view.fxml");
 
@@ -81,6 +92,14 @@ public class DashboardController {
         resultsBtn.setOnAction(event -> loadView("results_view.fxml"));
         settingsBtn.setOnAction(event -> loadView("settings_view.fxml"));
         simulatorBtn.setOnAction(event -> loadView("pipeline_simulator.fxml"));
+        if (rlLabBtn != null)
+            rlLabBtn.setOnAction(event -> loadView("rl_lab_view.fxml"));
+        if (visualizerBtn != null)
+            visualizerBtn.setOnAction(event -> loadView("rl_visualizer_view.fxml"));
+        if (creatorLabBtn != null)
+            creatorLabBtn.setOnAction(event -> loadView("creator_lab_view.fxml"));
+        if (perfHistoryBtn != null)
+            perfHistoryBtn.setOnAction(event -> loadView("performance_history_view.fxml"));
         exitBtn.setOnAction(event -> onExitClicked());
 
         // Chat Integration
@@ -137,6 +156,26 @@ public class DashboardController {
                 }
             });
         }).start();
+    }
+
+    /** Starts a background timer that refreshes live system stats every 5s. */
+    private void startSystemStatsPolling() {
+        java.util.concurrent.ScheduledExecutorService statsScheduler = java.util.concurrent.Executors
+                .newSingleThreadScheduledExecutor(r -> {
+                    Thread t = new Thread(r, "SystemStatsPoller");
+                    t.setDaemon(true);
+                    return t;
+                });
+        com.example.automl_prototype_1.service.agentic.SystemMonitorService sysMonitor = new com.example.automl_prototype_1.service.agentic.SystemMonitorService();
+
+        statsScheduler.scheduleAtFixedRate(() -> {
+            String stats = sysMonitor.getSystemContextString();
+            Platform.runLater(() -> {
+                if (systemStatsLabel != null) {
+                    systemStatsLabel.setText(stats);
+                }
+            });
+        }, 0, 5, java.util.concurrent.TimeUnit.SECONDS);
     }
 
     // In DashboardController.java
@@ -232,6 +271,34 @@ public class DashboardController {
         // ===================================================================
         // 2. SETUP THE UI AND BACKEND FOR THE EXPERIMENT RUN
         // ===================================================================
+
+        // Phase 4: Manual Feature Selection Dialog
+        if (appStateService.isManualFeatureSelectionEnabled()) {
+            try {
+                FXMLLoader fxmlLoader = new FXMLLoader(
+                        getClass().getResource("/com/example/automl_prototype_1/feature_selection_dialog.fxml"));
+                Parent parent = fxmlLoader.load();
+                FeatureSelectionDialogController dialogController = fxmlLoader.getController();
+
+                javafx.stage.Stage stage = new javafx.stage.Stage();
+                stage.initModality(javafx.stage.Modality.APPLICATION_MODAL);
+                stage.setTitle("Select Features"); // Keep title simple
+                stage.setScene(new javafx.scene.Scene(parent));
+                dialogController.setDialogStage(stage);
+
+                stage.showAndWait();
+
+                if (!dialogController.isConfirmed()) {
+                    LogService.info("Dashboard", "Manual Feature Selection Cancelled. Aborting run.");
+                    return;
+                }
+            } catch (IOException e) {
+                LogService.error("Dashboard", "Failed to open Feature Selection Dialog: " + e.getMessage());
+                showError("Failed to open Feature Selection Dialog.");
+                return;
+            }
+        }
+
         ProgressTrackingService.getInstance().reset(algorithms);
 
         // Update UI to Running State
@@ -384,7 +451,8 @@ public class DashboardController {
                             .orElse(finalResults.get(0));
 
                     try {
-                        com.example.automl_prototype_1.service.ExecutionService.getInstance().refitBestModel(best,
+                        ExecutionService.getInstance().refitBestModel(
+                                best,
                                 classifier, finalDataset);
                     } catch (Exception e) {
                         LogService.error("Dashboard", "Refit Failed: " + e.getMessage());

@@ -133,6 +133,45 @@ public class AlgoSelectViewModel {
         });
 
         forceGpu.addListener((obs, old, val) -> appStateService.setForceGpu(val));
+
+        // --- BERT Listeners ---
+        Double savedScratch = appStateService.getAlgorithmHyperparameter("BERT", "scratch");
+        if (savedScratch != null)
+            bertTrainFromScratch.set(savedScratch > 0.5);
+
+        Double savedLayers = appStateService.getAlgorithmHyperparameter("BERT", "num_layers");
+        if (savedLayers != null)
+            bertNumLayers.set(String.valueOf(savedLayers.intValue()));
+
+        Double savedHidden = appStateService.getAlgorithmHyperparameter("BERT", "hidden_size");
+        if (savedHidden != null)
+            bertHiddenSize.set(String.valueOf(savedHidden.intValue()));
+
+        Double savedHeads = appStateService.getAlgorithmHyperparameter("BERT", "num_heads");
+        if (savedHeads != null)
+            bertNumHeads.set(String.valueOf(savedHeads.intValue()));
+
+        bertTrainFromScratch.addListener(
+                (obs, old, val) -> appStateService.setAlgorithmHyperparameter("BERT", "scratch", val ? 1.0 : 0.0));
+
+        bertNumLayers.addListener((obs, old, val) -> {
+            try {
+                appStateService.setAlgorithmHyperparameter("BERT", "num_layers", (double) Integer.parseInt(val));
+            } catch (Exception e) {
+            }
+        });
+        bertHiddenSize.addListener((obs, old, val) -> {
+            try {
+                appStateService.setAlgorithmHyperparameter("BERT", "hidden_size", (double) Integer.parseInt(val));
+            } catch (Exception e) {
+            }
+        });
+        bertNumHeads.addListener((obs, old, val) -> {
+            try {
+                appStateService.setAlgorithmHyperparameter("BERT", "num_heads", (double) Integer.parseInt(val));
+            } catch (Exception e) {
+            }
+        });
     }
 
     // --- Advanced Properties ---
@@ -234,43 +273,103 @@ public class AlgoSelectViewModel {
         }).start();
     }
 
+    // --- BERT Gen AI Properties (Phase 8) ---
+    private final BooleanProperty bertTrainFromScratch = new SimpleBooleanProperty();
+    private final StringProperty bertNumLayers = new SimpleStringProperty("6");
+    private final StringProperty bertHiddenSize = new SimpleStringProperty("768");
+    private final StringProperty bertNumHeads = new SimpleStringProperty("12");
+
+    public BooleanProperty bertTrainFromScratchProperty() {
+        return bertTrainFromScratch;
+    }
+
+    public StringProperty bertNumLayersProperty() {
+        return bertNumLayers;
+    }
+
+    public StringProperty bertHiddenSizeProperty() {
+        return bertHiddenSize;
+    }
+
+    public StringProperty bertNumHeadsProperty() {
+        return bertNumHeads;
+    }
+
+    {
+        // Block to init BERT listeners (in instance init or constructor)
+        // We'll do it in initializeProperties called by constructor
+    }
+
+    // ... inside initializeProperties ...
+    // See below for injection
+
     public IClassifier createClassifierFromString(String name) {
         return switch (name) {
-            case "Random Forest" -> new com.example.automl_prototype_1.classifier.RandomForestClassifier();
-            case "Logistic Regression" -> new com.example.automl_prototype_1.classifier.LogisticRegression();
-            case "KNN" -> new com.example.automl_prototype_1.classifier.KnnClassifier();
-            case "XGBoost" -> new com.example.automl_prototype_1.classifier.XGBoostClassifier();
-            case "SVM" -> new com.example.automl_prototype_1.classifier.SvmClassifier();
+            case "Random Forest" -> new com.example.automl_prototype_1.classifier.cpu.RandomForestClassifier();
+            case "Logistic Regression" -> new com.example.automl_prototype_1.classifier.cpu.LogisticRegression();
+            case "KNN" -> new com.example.automl_prototype_1.classifier.cpu.KnnClassifier();
+            case "XGBoost" -> new com.example.automl_prototype_1.classifier.cpu.XGBoostClassifier();
+            case "SVM" -> new com.example.automl_prototype_1.classifier.cpu.SvmClassifier();
 
             // GPU Variants
-            // GPU Variants (Standardized)
-            case "GPU-Logistic Regression" -> new com.example.automl_prototype_1.classifier.GpuLogisticRegression();
+            case "GPU-Logistic Regression" -> new com.example.automl_prototype_1.classifier.gpu.GpuLogisticRegression();
 
             case "KNN (GPU Accelerated)" ->
-                new com.example.automl_prototype_1.classifier.GpuKnnClassifier();
+                new com.example.automl_prototype_1.classifier.gpu.GpuKnnClassifier();
 
             case "Random Forest (GPU Accelerated)" ->
-                new com.example.automl_prototype_1.classifier.GpuRandomForestClassifier();
+                new com.example.automl_prototype_1.classifier.gpu.GpuRandomForestClassifier();
 
             case "SVM (GPU Accelerated)" ->
-                new com.example.automl_prototype_1.classifier.GpuPythonSvmClassifier();
+                new com.example.automl_prototype_1.classifier.gpu.GpuPythonSvmClassifier();
 
             case "XGBoost (GPU Accelerated)" ->
-                new com.example.automl_prototype_1.classifier.GpuPythonXGBoostClassifier();
+                new com.example.automl_prototype_1.classifier.gpu.GpuPythonXGBoostClassifier();
 
             case "CatBoost (GPU Accelerated)" ->
-                new com.example.automl_prototype_1.classifier.GpuPythonCatBoostClassifier();
+                new com.example.automl_prototype_1.classifier.gpu.GpuPythonCatBoostClassifier();
 
             case "LightGBM (GPU Accelerated)" ->
-                new com.example.automl_prototype_1.classifier.GpuPythonLightGbmClassifier();
+                new com.example.automl_prototype_1.classifier.gpu.GpuPythonLightGbmClassifier();
+
+            case "MLP (Neural Network)" -> {
+                // Load config
+                com.example.automl_prototype_1.classifier.MlpClassifier mlp = new com.example.automl_prototype_1.classifier.MlpClassifier();
+                String layers = com.example.automl_prototype_1.service.AppStateService.getInstance()
+                        .getAlgorithmConfigString("MLP", "hidden_layer_sizes");
+                if (layers != null && !layers.isBlank()) {
+                    mlp.setHiddenLayerSizes(layers);
+                }
+                yield mlp;
+            }
+
+            case "BERT (Gen AI Text)" -> {
+                com.example.automl_prototype_1.classifier.BertClassifier bert = new com.example.automl_prototype_1.classifier.BertClassifier();
+                // Load params from AppState
+                Double scratch = appStateService.getAlgorithmHyperparameter("BERT", "scratch");
+                Double layers = appStateService.getAlgorithmHyperparameter("BERT", "num_layers");
+                Double hidden = appStateService.getAlgorithmHyperparameter("BERT", "hidden_size");
+                Double heads = appStateService.getAlgorithmHyperparameter("BERT", "num_heads");
+
+                if (scratch != null && scratch > 0.5)
+                    bert.setTrainFromScratch(true);
+                if (layers != null)
+                    bert.setNumLayers(layers.intValue());
+                if (hidden != null)
+                    bert.setHiddenSize(hidden.intValue());
+                if (heads != null)
+                    bert.setNumHeads(heads.intValue());
+
+                yield bert;
+            }
 
             // Legacy Fallbacks
             case "SVM (Linear GPU)" ->
-                new com.example.automl_prototype_1.classifier.GpuPythonSvmClassifier(1.0, "linear");
+                new com.example.automl_prototype_1.classifier.gpu.GpuPythonSvmClassifier(1.0, "linear");
 
             default ->
                 // Fallback
-                new com.example.automl_prototype_1.classifier.RandomForestClassifier();
+                new com.example.automl_prototype_1.classifier.cpu.RandomForestClassifier();
         };
     }
 
@@ -281,8 +380,8 @@ public class AlgoSelectViewModel {
         classifiers.add("SVM");
         classifiers.add("XGBoost");
 
-        if (com.example.automl_prototype_1.service.HardwareAcceleratorService.isGpuAvailable()) {
-            boolean pythonAvailable = com.example.automl_prototype_1.service.PythonExecutionService.getInstance()
+        if (com.example.automl_prototype_1.gpu.HardwareAcceleratorService.isGpuAvailable()) {
+            boolean pythonAvailable = com.example.automl_prototype_1.gpu.PythonExecutionService.getInstance()
                     .isAvailable();
 
             // Native/Legacy GPU
@@ -296,10 +395,28 @@ public class AlgoSelectViewModel {
                 classifiers.add("XGBoost (GPU Accelerated)");
                 classifiers.add("CatBoost (GPU Accelerated)");
                 classifiers.add("LightGBM (GPU Accelerated)");
+
+                // Gen AI (Phase 7)
+                classifiers.add("BERT (Gen AI Text)");
+
+                // Custom MLP (Phase 4)
+                Double mlpEnabled = appStateService.getAlgorithmHyperparameter("MLP", "enabled");
+                if (mlpEnabled != null && mlpEnabled > 0.5) {
+                    classifiers.add("MLP (Neural Network)");
+                }
+
             } else {
                 // Fallback for when Python is missing but GPU is present (Legacy Java/Aparapi)
                 classifiers.add("Random Forest (GPU Accelerated)");
                 classifiers.add("SVM (Linear GPU)");
+            }
+        } else {
+            // CPU Python Fallback (if Python is there but no GPU?)
+            // We should probably allow BERT on CPU too if Python is there.
+            boolean pythonAvailable = com.example.automl_prototype_1.gpu.PythonExecutionService.getInstance()
+                    .isAvailable();
+            if (pythonAvailable) {
+                classifiers.add("BERT (Gen AI Text)");
             }
         }
         return classifiers;

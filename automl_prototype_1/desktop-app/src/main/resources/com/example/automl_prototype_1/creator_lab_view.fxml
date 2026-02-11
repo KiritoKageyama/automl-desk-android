@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.geometry.Insets?>
+<?import javafx.scene.control.Button?>
+<?import javafx.scene.control.Label?>
+<?import javafx.scene.control.TextArea?>
+<?import javafx.scene.control.TextField?>
+<?import javafx.scene.layout.HBox?>
+<?import javafx.scene.layout.VBox?>
+<?import javafx.scene.text.Font?>
+
+<VBox spacing="15.0" xmlns="http://javafx.com/javafx/17" xmlns:fx="http://javafx.com/fxml/1" fx:controller="com.example.automl_prototype_1.controller.CreatorLabViewController">
+    <padding>
+        <Insets bottom="20.0" left="20.0" right="20.0" top="20.0" />
+    </padding>
+
+    <Label text="Creator Lab (Meta-Architect)" textFill="#8e44ad">
+        <font>
+            <Font name="Segoe UI Semibold" size="24.0" />
+        </font>
+    </Label>
+    
+    <TabPane tabClosingPolicy="UNAVAILABLE" VBox.vgrow="ALWAYS">
+        <tabs>
+            <Tab text="Code Generator">
+                <content>
+                    <VBox spacing="15.0" style="-fx-padding: 15;">
+                        <Label text="Describe what you want to build (e.g., 'A Snake Game Environment', 'Moving Average Feature')" />
+                        
+                        <HBox spacing="10" alignment="CENTER_LEFT">
+                            <Label text="Generation Mode:"/>
+                            <ComboBox fx:id="modeSelector" prefWidth="200"/>
+                        </HBox>
+
+                        <HBox spacing="10.0" VBox.vgrow="NEVER">
+                            <TextField fx:id="promptField" promptText="Enter your request..." HBox.hgrow="ALWAYS" />
+                            <Button fx:id="generateBtn" text="Generate Code" style="-fx-background-color: #9b59b6; -fx-text-fill: white;" />
+                        </HBox>
+
+                        <HBox spacing="15.0" VBox.vgrow="ALWAYS">
+                            <!-- Code Editor / Preview -->
+                            <VBox spacing="5.0" HBox.hgrow="ALWAYS">
+                                <Label text="Generated Code (Review &amp; Edit)" style="-fx-font-weight: bold;" />
+                                <TextArea fx:id="codeArea" style="-fx-font-family: 'Consolas', monospace;" VBox.vgrow="ALWAYS" wrapText="false"/>
+                            </VBox>
+                            
+                            <!-- Controls & Status -->
+                            <VBox spacing="10.0" prefWidth="250.0">
+                                <Label text="Actions" style="-fx-font-weight: bold;" />
+                                <TextField fx:id="classNameField" promptText="Class Name (e.g. SnakeEnv)" />
+                                <Button fx:id="compileBtn" text="Compile &amp; Register" maxWidth="Infinity" style="-fx-background-color: #27ae60; -fx-text-fill: white;" disable="true" />
+                                
+                                <Label text="Build Log" style="-fx-font-weight: bold;" />
+                                <TextArea fx:id="logArea" editable="false" wrapText="true" VBox.vgrow="ALWAYS" />
+                            </VBox>
+                        </HBox>
+                    </VBox>
+                </content>
+            </Tab>
+            
+            <Tab text="Model Hub &amp; Extensions">
+                <content>
+                    <fx:include source="model_hub_view.fxml"/>
+                </content>
+            </Tab>
+        </tabs>
+    </TabPane>
+</VBox>

@@ -1,7 +1,7 @@
 package com.example.automl_prototype_1.controller;
 
 import com.example.automl_prototype_1.model.progress.OrchestratorState;
-import com.example.automl_prototype_1.service.ProgressTrackingService;
+import com.example.automl_prototype_1.service.progress.ProgressTrackingService;
 
 import javafx.application.Platform;
 import javafx.concurrent.Task;

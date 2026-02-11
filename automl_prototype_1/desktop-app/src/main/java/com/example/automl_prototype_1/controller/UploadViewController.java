@@ -3,22 +3,21 @@ package com.example.automl_prototype_1.controller;
 import com.example.automl_prototype_1.model.Dataset;
 import com.example.automl_prototype_1.service.AppStateService;
 import com.example.automl_prototype_1.dataprovider.CsvDataProvider;
-import com.example.automl_prototype_1.model.AttributeSummary;
-import com.example.automl_prototype_1.service.RecommendationService;
-import com.example.automl_prototype_1.experiment.SyntheticDataGenerator;
+import com.example.automl_prototype_1.dataprovider.SyntheticDataGenerator;
 import javafx.collections.FXCollections;
 import javafx.fxml.FXML;
-import javafx.scene.control.Alert;
-import javafx.scene.control.Button;
-import javafx.scene.control.ChoiceBox;
-import javafx.scene.control.Label;
-import javafx.scene.control.TextArea;
+import javafx.scene.control.*;
 import javafx.stage.FileChooser;
-import javafx.stage.Stage;
+import javafx.stage.DirectoryChooser;
+import javafx.concurrent.Task;
 
 import java.io.File;
 import java.io.FileReader;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 public class UploadViewController {
     @FXML
@@ -32,8 +31,19 @@ public class UploadViewController {
     @FXML
     private Button analyzeButton;
 
+    // --- Phase 2: 3-Tier UI Components ---
+    @FXML
+    private javafx.scene.control.ComboBox<AppStateService.DataType> dataTypeComboBox;
+    @FXML
+    private javafx.scene.control.ComboBox<AppStateService.DataQuality> dataQualityComboBox;
+    @FXML
+    private javafx.scene.control.CheckBox enableQualityCheck;
+    @FXML
+    private javafx.scene.control.ComboBox<AppStateService.TrainingMode> trainingModeComboBox;
+    @FXML
+    private javafx.scene.layout.VBox dynamicOptionsBox; // Container for these new options if needed
+
     private final AppStateService appStateService = AppStateService.getInstance();
-    private final RecommendationService recommendationService = new RecommendationService();
 
     public UploadViewController() {
         // No-arg constructor for FXML
@@ -51,52 +61,93 @@ public class UploadViewController {
                     }
                 });
 
+        // --- Phase 2: 3-Tier UI Initialization ---
+        init3TierSelection();
+
         // Initialize view based on current state
         updateViewFromState();
         analyzeButton.setOnAction(event -> handleAnalyze());
         updateViewFromState(); // Call this to set initial button state
     }
 
-    private void handleAnalyze() {
-        Dataset tempDataset;
-        try (FileReader reader = new FileReader(appStateService.getSelectedDatasetFile())) {
-            tempDataset = new CsvDataProvider().loadDataset(reader);
-        } catch (Exception e) {
-            analysisTextArea.setText("Error: Could not load and analyze the dataset.\n\n" + e.getMessage());
-            return;
+    private void init3TierSelection() {
+        // 1. Top Level (Data Type)
+        if (dataTypeComboBox != null) {
+            dataTypeComboBox.setItems(FXCollections.observableArrayList(AppStateService.DataType.values()));
+            dataTypeComboBox.setValue(AppStateService.DataType.NUMERICAL); // Default
+            dataTypeComboBox.setOnAction(e -> {
+                appStateService.setSelectedDataType(dataTypeComboBox.getValue());
+                updateTrainingModes(); // Logic to filter bottom level
+            });
         }
 
-        List<AttributeSummary> summaries = recommendationService.analyzeAttributes(tempDataset);
-
-        StringBuilder report = new StringBuilder();
-        report.append(String.format("%-25s | %-11s | %-8s | %-8s | %-10s | %-10s | %-10s | %s\n",
-                "Attribute", "Data Type", "Unique", "Missing", "Mean", "Std Dev", "Min", "Max"));
-        report.append("-".repeat(110)).append("\n");
-
-        for (AttributeSummary summary : summaries) {
-            report.append(String.format("%-25s | %-11s | %-8d | %-8d | %-10s | %-10s | %-10s | %s\n",
-                    summary.attributeName(), summary.dataType(), summary.uniqueValues(), summary.missingValues(),
-                    summary.mean(), summary.stdDev(), summary.min(), summary.max()));
+        // 2. Middle Level (Data Quality)
+        if (dataQualityComboBox != null) {
+            dataQualityComboBox.setItems(FXCollections.observableArrayList(AppStateService.DataQuality.values()));
+            dataQualityComboBox.setValue(AppStateService.DataQuality.STRUCTURED);
+            dataQualityComboBox.setDisable(true); // Default disabled
+            dataQualityComboBox
+                    .setOnAction(e -> appStateService.setSelectedDataQuality(dataQualityComboBox.getValue()));
         }
 
-        report.append("\n\n--- Insights & Suggestions ---\n");
-        report.append(
-                "\n* Target Column: Look for a 'Categorical' attribute with a low number of unique values (e.g., 2 for binary classification).\n");
-
-        for (AttributeSummary summary : summaries) {
-            if (summary.missingValues() > 0) {
-                report.append("* Warning: The column '").append(summary.attributeName())
-                        .append("' has missing values.\n");
-            }
-            if (summary.dataType().equals("Numeric") && summary.uniqueValues() <= 2) {
-                report.append("* Info: The numeric column '").append(summary.attributeName())
-                        .append("' might be a binary categorical feature.\n");
-            }
+        if (enableQualityCheck != null) {
+            enableQualityCheck.setSelected(false);
+            enableQualityCheck.setOnAction(e -> {
+                boolean enabled = enableQualityCheck.isSelected();
+                appStateService.setEnableQualityCheck(enabled);
+                if (dataQualityComboBox != null)
+                    dataQualityComboBox.setDisable(!enabled);
+            });
         }
 
-        analysisTextArea.setText(report.toString());
-        analysisTextArea.setText(report.toString());
+        // 3. Bottom Level (Training Mode)
+        if (trainingModeComboBox != null) {
+            updateTrainingModes(); // Initial population
+            trainingModeComboBox.setOnAction(e -> {
+                if (trainingModeComboBox.getValue() != null)
+                    appStateService.setSelectedTrainingMode(trainingModeComboBox.getValue());
+            });
+        }
     }
+
+    private void updateTrainingModes() {
+        if (dataTypeComboBox == null || trainingModeComboBox == null)
+            return;
+
+        AppStateService.DataType selectedType = dataTypeComboBox.getValue();
+        List<AppStateService.TrainingMode> relevantModes = new java.util.ArrayList<>();
+
+        // Dynamic Filtering Logic
+        switch (selectedType) {
+            case NUMERICAL:
+                relevantModes.add(AppStateService.TrainingMode.STATISTICAL);
+                relevantModes.add(AppStateService.TrainingMode.ML_ALGORITHMS);
+                relevantModes.add(AppStateService.TrainingMode.NEURAL_NETWORK_MLP);
+                break;
+            case IMAGE:
+                relevantModes.add(AppStateService.TrainingMode.DEEP_LEARNING);
+                relevantModes.add(AppStateService.TrainingMode.CNN);
+                relevantModes.add(AppStateService.TrainingMode.VISION_TRANSFORMERS);
+                break;
+            case TEXT:
+                relevantModes.add(AppStateService.TrainingMode.GEN_AI);
+                relevantModes.add(AppStateService.TrainingMode.ATTENTION_NETWORKS);
+                relevantModes.add(AppStateService.TrainingMode.RNN_LSTM);
+                break;
+            case USER_PATTERN:
+                relevantModes.add(AppStateService.TrainingMode.AGENTIC_TRAINING);
+                relevantModes.add(AppStateService.TrainingMode.REINFORCEMENT_LEARNING);
+                break;
+        }
+
+        trainingModeComboBox.setItems(FXCollections.observableArrayList(relevantModes));
+        if (!relevantModes.isEmpty()) {
+            trainingModeComboBox.setValue(relevantModes.get(0));
+            appStateService.setSelectedTrainingMode(relevantModes.get(0));
+        }
+    }
+
+    // Old handleAnalyze removed.
 
     @FXML
     private void handleAdvancedSettings() {
@@ -162,28 +213,161 @@ public class UploadViewController {
         });
     }
 
+    @FXML
     private void handleBrowse() {
-        FileChooser fileChooser = new FileChooser();
-        fileChooser.setTitle("Select Dataset File");
-        fileChooser.getExtensionFilters()
-                .add(new FileChooser.ExtensionFilter("Dataset Files", "*.csv", "*.data", "*.txt"));
-        Stage stage = (Stage) browseButton.getScene().getWindow();
-        File file = fileChooser.showOpenDialog(stage);
+        AppStateService.DataType selectedType = appStateService.getSelectedDataType();
 
-        if (file != null) {
-            appStateService.setSelectedDatasetFile(file);
-            // After selecting a file, we MUST load it to get the headers
-            try (FileReader reader = new FileReader(file)) {
-                Dataset tempDataset = new CsvDataProvider().loadDataset(reader);
-                appStateService.setDatasetHeaders(tempDataset.getHeaders()); // Store headers in state
-            } catch (Exception e) {
-                AppStateService.getInstance().setDatasetHeaders(null);
-                com.example.automl_prototype_1.service.LogService.error("UploadView",
-                        "Failed to load dataset: " + e.getMessage());
-                showError("Failed to load dataset: " + e.getMessage());
+        if (selectedType == AppStateService.DataType.IMAGE || selectedType == AppStateService.DataType.TEXT) {
+            DirectoryChooser directoryChooser = new DirectoryChooser();
+            directoryChooser.setTitle("Select Dataset Folder");
+            File selectedDirectory = directoryChooser.showDialog(browseButton.getScene().getWindow());
+
+            if (selectedDirectory != null) {
+                selectedFileLabel.setText(selectedDirectory.getAbsolutePath()); // Changed from datasetPathField
+                appStateService.setSelectedDatasetFile(selectedDirectory);
+                analyzeButton.setDisable(false);
+            }
+        } else {
+            // Default CSV File Chooser
+            FileChooser fileChooser = new FileChooser();
+            fileChooser.setTitle("Select Dataset File");
+            fileChooser.getExtensionFilters().add(new FileChooser.ExtensionFilter("CSV Files", "*.csv"));
+            File selectedFile = fileChooser.showOpenDialog(browseButton.getScene().getWindow());
+
+            if (selectedFile != null) {
+                selectedFileLabel.setText(selectedFile.getAbsolutePath()); // Changed from datasetPathField
+                appStateService.setSelectedDatasetFile(selectedFile);
+                analyzeButton.setDisable(false);
             }
         }
-        updateViewFromState();
+    }
+
+    @FXML
+    private void handleAnalyze() {
+        if (appStateService.getSelectedDatasetFile() == null) {
+            analysisTextArea.appendText("Error: No dataset selected.\n");
+            return;
+        }
+
+        analysisTextArea.appendText("Analyzing dataset...\n");
+
+        Task<Dataset> loadTask = new Task<>() {
+            @Override
+            protected Dataset call() throws Exception {
+                AppStateService.DataType dtype = appStateService.getSelectedDataType();
+                File source = appStateService.getSelectedDatasetFile();
+
+                if (dtype == AppStateService.DataType.IMAGE) {
+                    return loadImagesFromFolder(source);
+                } else if (dtype == AppStateService.DataType.TEXT) {
+                    return loadImagesFromFolder(source);
+                } else {
+                    // CSV Loading
+                    try (FileReader reader = new FileReader(source)) {
+                        return new CsvDataProvider().loadDataset(reader);
+                    }
+                }
+            }
+        };
+
+        loadTask.setOnSucceeded(e -> {
+            Dataset dataset = loadTask.getValue();
+            appStateService.setCurrentDataset(dataset);
+            appStateService.setDatasetHeaders(dataset.getHeaders()); // Ensure headers are set
+
+            StringBuilder stats = new StringBuilder();
+            stats.append("Dataset Loaded Successfully!\n");
+            stats.append("Type: ").append(dataset.getDataType()).append("\n");
+
+            if (dataset.getDataType() == Dataset.DataType.IMAGE) {
+                stats.append("Total Images: ").append(dataset.getFilePaths().size()).append("\n");
+                // Infer classes from folders?
+                if (dataset.getLabelVector() != null) {
+                    long uniqueLabels = Arrays.stream(dataset.getLabelVector()).distinct().count();
+                    stats.append("Classes Found: ").append(uniqueLabels).append("\n");
+                }
+            } else {
+                stats.append("Rows: ").append(dataset.getFeatures().length).append("\n");
+                stats.append("Columns: ").append(dataset.getFeatures().length > 0 ? dataset.getFeatures()[0].length : 0)
+                        .append("\n");
+            }
+
+            analysisTextArea.setText(stats.toString());
+            populateColumnList(dataset);
+        });
+
+        loadTask.setOnFailed(e -> {
+            analysisTextArea.appendText("Error loading dataset: " + loadTask.getException().getMessage() + "\n");
+            loadTask.getException().printStackTrace();
+        });
+
+        new Thread(loadTask).start();
+    }
+
+    private void populateColumnList(Dataset dataset) {
+        if (dataset.getHeaders() != null && !dataset.getHeaders().isEmpty()) {
+            targetColumnChoiceBox.setItems(FXCollections.observableArrayList(dataset.getHeaders()));
+            targetColumnChoiceBox.setDisable(false);
+            // Default to last
+            targetColumnChoiceBox.setValue(dataset.getHeaders().get(dataset.getHeaders().size() - 1));
+        } else {
+            targetColumnChoiceBox.setDisable(true);
+        }
+    }
+
+    private Dataset loadImagesFromFolder(File folder) {
+        List<String> filePaths = new ArrayList<>();
+        List<Integer> labels = new ArrayList<>();
+        Map<String, Integer> labelMap = new HashMap<>();
+        int labelCounter = 0;
+
+        // Recursive scan (simplified for now: assume Class/Image structure or just
+        // flat)
+        // Heuristic: If subfolders exist, use them as labels.
+        File[] children = folder.listFiles(File::isDirectory);
+
+        if (children != null && children.length > 0) {
+            // Labeled folders
+            for (File classFolder : children) {
+                String className = classFolder.getName();
+                labelMap.putIfAbsent(className, labelCounter++);
+                int currentLabel = labelMap.get(className);
+
+                File[] images = classFolder.listFiles(f -> isImageFile(f));
+                if (images != null) {
+                    for (File img : images) {
+                        filePaths.add(img.getAbsolutePath());
+                        labels.add(currentLabel);
+                    }
+                }
+            }
+        } else {
+            // Flat folder (Unsupervised or inference only?) -> Label 0
+            File[] images = folder.listFiles(f -> isImageFile(f));
+            if (images != null) {
+                for (File img : images) {
+                    filePaths.add(img.getAbsolutePath());
+                    labels.add(0);
+                }
+            }
+        }
+
+        int[] labelArray = labels.stream().mapToInt(i -> i).toArray();
+        // Map AppStateService.DataType to Dataset.DataType
+        Dataset.DataType dsType = Dataset.DataType.TABULAR;
+        if (appStateService.getSelectedDataType() == AppStateService.DataType.IMAGE) {
+            dsType = Dataset.DataType.IMAGE;
+        } else if (appStateService.getSelectedDataType() == AppStateService.DataType.TEXT) {
+            dsType = Dataset.DataType.TEXT;
+        }
+
+        // Return dataset with EMPTY features but Valid Paths
+        return new Dataset(folder, new double[0][0], labelArray, filePaths, dsType);
+    }
+
+    private boolean isImageFile(File f) {
+        String name = f.getName().toLowerCase();
+        return name.endsWith(".jpg") || name.endsWith(".jpeg") || name.endsWith(".png") || name.endsWith(".bmp");
     }
 
     // A helper to sync the UI with the AppStateService

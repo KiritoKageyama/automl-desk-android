@@ -1,12 +1,12 @@
 package com.example.automl_prototype_1.algorithm;
 
-import com.example.automl_prototype_1.service.ProgressTrackingService;
+import com.example.automl_prototype_1.service.progress.ProgressTrackingService;
 import com.example.automl_prototype_1.model.Dataset;
 import com.example.automl_prototype_1.model.ExecutionResult;
 import com.example.automl_prototype_1.service.IClassifier;
-import com.example.automl_prototype_1.classifier.RandomForestClassifier;
-import com.example.automl_prototype_1.classifier.SvmClassifier;
-import com.example.automl_prototype_1.classifier.XGBoostClassifier;
+import com.example.automl_prototype_1.classifier.cpu.RandomForestClassifier;
+import com.example.automl_prototype_1.classifier.cpu.SvmClassifier;
+import com.example.automl_prototype_1.classifier.cpu.XGBoostClassifier;
 import smile.validation.metric.Accuracy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -15,14 +15,14 @@ import java.util.*;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
-import com.example.automl_prototype_1.service.IGpuCachedClassifier;
-import com.example.automl_prototype_1.service.GpuBatchService;
+import com.example.automl_prototype_1.gpu.IGpuCachedClassifier;
+import com.example.automl_prototype_1.gpu.GpuBatchService;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ForkJoinPool;
 import java.util.concurrent.TimeUnit;
 
-import com.example.automl_prototype_1.service.HardwareAcceleratorService;
+import com.example.automl_prototype_1.gpu.HardwareAcceleratorService;
 import com.example.automl_prototype_1.service.AppStateService;
 
 // ...
@@ -426,8 +426,6 @@ public abstract class AbstractFeatureSelectionAlgorithm implements OptimizationA
                 final double[][] tx = finalTrainX;
                 final int[] ty = rawTrainY;
                 final double[][] tex = finalTestX;
-
-                IGpuCachedClassifier gpuC = (IGpuCachedClassifier) classifier;
 
                 // Upload Train
                 uploads.add(GpuBatchService.getInstance().submitUploadDataset(tx, ty)

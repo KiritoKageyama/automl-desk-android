@@ -71,6 +71,32 @@
                     <javafx.scene.control.ComboBox fx:id="scalingComboBox" prefWidth="150"/>
                 </HBox>
                 <CheckBox fx:id="featureSelectionCheckBox" text="Enable Feature Selection (Optimization)" selected="true"/>
+                <CheckBox fx:id="manualFeatSelCheckBox" text="Manual Feature Selection (Launch Dialog)" selected="false"/>
+                
+                <Separator/>
+                <Label style="-fx-font-weight: bold;" text="Data Preprocessing (Phase 5)"/>
+                
+                <CheckBox fx:id="removeOutliersCheckBox" text="Remove Outliers (IQR Method)" selected="false"/>
+                
+                <HBox spacing="10" alignment="CENTER_LEFT">
+                    <Label text="Transformation:"/>
+                    <javafx.scene.control.ComboBox fx:id="transformationComboBox" prefWidth="150"/>
+                </HBox>
+
+                <HBox spacing="10" alignment="CENTER_LEFT">
+                    <Label text="Feature Creation:"/>
+                    <javafx.scene.control.ComboBox fx:id="featureCreationComboBox" prefWidth="150"/>
+                </HBox>
+                
+                <Button fx:id="askAiPreprocessingBtn" text="✨ Ask AI for Strategy" style="-fx-background-color: #8b5cf6; -fx-text-fill: white; -fx-font-size: 11px;"/>
+                
+                <Separator/>
+                <Label style="-fx-font-weight: bold;" text="Custom Models (MLP)"/>
+                <CheckBox fx:id="enableMlpCheckBox" text="Enable Custom MLP in Algorithm List" selected="false"/>
+                <HBox spacing="10" alignment="CENTER_LEFT" fx:id="mlpConfigBox" disable="true">
+                    <Label text="Hidden Layers (e.g. 100,50):"/>
+                    <javafx.scene.control.TextField fx:id="mrMlpLayersField" text="100,50"/>
+                </HBox>
 
                 <Separator/>
                 <Label style="-fx-font-weight: bold;" text="Algorithm Hyperparameters"/>
@@ -115,6 +141,32 @@
                     <Label text="Wrapper URL:"/>
                     <javafx.scene.control.TextField fx:id="ollamaUrlField" text="http://localhost:11434"/>
                 </HBox>
+            </VBox>
+        </VBox>
+
+        <!-- Card for AI Safety Controls -->
+        <VBox spacing="10" styleClass="card" alignment="TOP_LEFT">
+            <padding>
+                <Insets bottom="20.0" left="30.0" right="30.0" top="20.0"/>
+            </padding>
+
+            <Label styleClass="sub-header-label" text="AI Safety Controls"/>
+            <Separator/>
+            <Label text="Emergency controls for the AI subsystem." style="-fx-text-fill: gray;"/>
+
+            <VBox spacing="10">
+                <CheckBox fx:id="strictModeCheckBox" text="Enable Strict Mode (Warnings → Vetoes)" selected="false"/>
+
+                <HBox spacing="10" alignment="CENTER_LEFT" style="-fx-padding: 10 0 0 0;">
+                    <Button fx:id="emergencyStopBtn" text="🔴 Emergency Stop"
+                            style="-fx-background-color: #dc2626; -fx-text-fill: white; -fx-font-weight: bold;"/>
+                    <Button fx:id="interruptAiBtn" text="⏸ Interrupt AI"
+                            style="-fx-background-color: #ea580c; -fx-text-fill: white; -fx-font-weight: bold;"/>
+                    <Button fx:id="clearAiCacheBtn" text="🗑 Clear AI Cache"
+                            style="-fx-background-color: #6366f1; -fx-text-fill: white;"/>
+                </HBox>
+
+                <Label fx:id="safetyStatusLabel" text="" style="-fx-font-size: 11px; -fx-text-fill: gray;"/>
             </VBox>
         </VBox>
 

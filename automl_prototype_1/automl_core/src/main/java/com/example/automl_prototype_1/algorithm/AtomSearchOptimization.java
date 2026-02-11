@@ -116,7 +116,7 @@ public class AtomSearchOptimization extends AbstractFeatureSelectionAlgorithm {
         }
 
         // Parallel processing of particles with bounded concurrency (Smart Parallelism)
-        int optimalThreads = com.example.automl_prototype_1.service.HardwareAcceleratorService
+        int optimalThreads = com.example.automl_prototype_1.gpu.HardwareAcceleratorService
                 .calculateOptimalThreadCount();
         List<FitnessResult> results;
         @SuppressWarnings("resource")

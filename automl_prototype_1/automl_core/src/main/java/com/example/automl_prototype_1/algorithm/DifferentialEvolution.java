@@ -101,7 +101,7 @@ public class DifferentialEvolution extends AbstractFeatureSelectionAlgorithm {
 
         // Sequential processing to avoid system freeze
         // Smart Parallelism
-        int optimalThreads = com.example.automl_prototype_1.service.HardwareAcceleratorService
+        int optimalThreads = com.example.automl_prototype_1.gpu.HardwareAcceleratorService
                 .calculateOptimalThreadCount();
         @SuppressWarnings("resource")
         java.util.concurrent.ForkJoinPool customThreadPool = new java.util.concurrent.ForkJoinPool(optimalThreads);

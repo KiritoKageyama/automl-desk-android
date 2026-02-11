@@ -18,6 +18,7 @@ public class Dataset {
     private final double[][] features;
     private final int[] labels; // Can be null if no target is set yet or for inference
     private String targetColumnName;
+    private final List<String> filePaths; // For IMAGE/TEXT data where features are files
 
     public enum DataType {
         TABULAR,
@@ -29,7 +30,7 @@ public class Dataset {
     private final DataType dataType;
 
     /**
-     * Constructor for the Dataset.
+     * Constructor for the Dataset (Tabular).
      * 
      * @param sourceFile       The original source file (optional).
      * @param headers          The list of header names.
@@ -44,6 +45,21 @@ public class Dataset {
         this.labels = labels;
         this.targetColumnName = targetColumnName;
         this.dataType = DataType.TABULAR; // Default
+        this.filePaths = null;
+    }
+
+    public Dataset(File sourceFile, List<String> filePaths, int[] labels, DataType dataType) {
+        this(sourceFile, new double[labels != null ? labels.length : 0][0], labels, filePaths, dataType);
+    }
+
+    public Dataset(File sourceFile, double[][] features, int[] labels, List<String> filePaths, DataType dataType) {
+        this.sourceFile = sourceFile;
+        this.headers = new ArrayList<>();
+        this.features = features;
+        this.labels = labels;
+        this.targetColumnName = "Label";
+        this.dataType = dataType;
+        this.filePaths = filePaths;
     }
 
     /**
@@ -60,6 +76,7 @@ public class Dataset {
         this.targetColumnName = null;
         this.labels = null;
         this.dataType = DataType.TABULAR; // Default for legacy constructor
+        this.filePaths = null;
 
         if (records == null || records.isEmpty()) {
             this.features = new double[0][0];
@@ -107,6 +124,10 @@ public class Dataset {
 
     public int[] getLabels() {
         return labels;
+    }
+
+    public List<String> getFilePaths() {
+        return filePaths != null ? Collections.unmodifiableList(filePaths) : Collections.emptyList();
     }
 
     public DataType getDataType() {

@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.scene.control.*?>
+<?import javafx.scene.layout.*?>
+<?import javafx.scene.chart.*?>
+<?import javafx.geometry.Insets?>
+
+<BorderPane xmlns="http://javafx.com/javafx" xmlns:fx="http://javafx.com/fxml"
+            fx:controller="com.example.automl_prototype_1.controller.DataVisualizationViewController"
+            prefHeight="600.0" prefWidth="800.0">
+    
+    <center>
+        <TabPane fx:id="vizTabPane" tabClosingPolicy="UNAVAILABLE">
+            <!-- Tab 1: Numeric Scatter -->
+            <Tab fx:id="numericTab" text="Numeric Data">
+                <VBox spacing="10" alignment="CENTER">
+                    <ScatterChart fx:id="scatterChart">
+                        <xAxis><NumberAxis fx:id="scatterX" label="Feature 0"/></xAxis>
+                        <yAxis><NumberAxis fx:id="scatterY" label="Feature 1"/></yAxis>
+                    </ScatterChart>
+                    <Label text="Scatter Plot of first 2 features"/>
+                </VBox>
+            </Tab>
+
+            <!-- Tab 2: Image Gallery -->
+            <Tab fx:id="imageTab" text="Image Gallery">
+                <ScrollPane fitToWidth="true">
+                    <TilePane fx:id="imageGallery" hgap="10" vgap="10" prefColumns="5" alignment="TOP_LEFT" style="-fx-padding: 10;"/>
+                </ScrollPane>
+            </Tab>
+            
+            <!-- Tab 3: Time Series -->
+            <Tab fx:id="timeSeriesTab" text="Time Series Analysis">
+                <VBox spacing="10">
+                     <LineChart fx:id="timeSeriesChart" createSymbols="false">
+                        <xAxis><NumberAxis label="Time Step"/></xAxis>
+                        <yAxis><NumberAxis label="Value"/></yAxis>
+                     </LineChart>
+                     <Label text="Sample Time Series (First 5 records)" style="-fx-padding: 10;"/>
+                </VBox>
+            </Tab>
+
+            <!-- Tab 4: Real-Time Stream -->
+            <Tab fx:id="realTimeTab" text="Real-Time Stream">
+                <VBox spacing="10" style="-fx-padding: 15;">
+                    <HBox spacing="10" alignment="CENTER_LEFT">
+                        <Button text="Simulate Data Point" onAction="#handleSimulateData"/>
+                        <Button text="Save Buffer to CSV" onAction="#handleSaveStream"/>
+                        <Button text="Clear Buffer" onAction="#handleClearStream" style="-fx-text-fill: red;"/>
+                        <Label fx:id="rtCounterLabel" text="Buffer: 0 records" style="-fx-font-weight: bold;"/>
+                    </HBox>
+                    <LineChart fx:id="realTimeChart" animated="false" createSymbols="false">
+                        <xAxis><NumberAxis label="Time (Index)"/></xAxis>
+                        <yAxis><NumberAxis label="Value (Feat 0)"/></yAxis>
+                    </LineChart>
+                </VBox>
+            </Tab>
+        </TabPane>
+    </center>
+</BorderPane>

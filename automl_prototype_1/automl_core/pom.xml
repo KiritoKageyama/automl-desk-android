@@ -91,6 +91,13 @@
             <artifactId>onnxruntime_gpu</artifactId>
             <version>1.17.1</version>
         </dependency> -->
+
+        <!-- JavaFX Graphics for Environment Visualization -->
+        <dependency>
+            <groupId>org.openjfx</groupId>
+            <artifactId>javafx-graphics</artifactId>
+            <version>21.0.1</version>
+        </dependency>
     </dependencies>
 
 </project>

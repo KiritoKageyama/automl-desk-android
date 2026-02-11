@@ -430,43 +430,45 @@ public class ResultsViewController implements Initializable {
 
     @FXML
     private void handleExportOnnx() {
-        List<ExecutionResult> results = resultsTable.getItems();
-        if (results == null || results.isEmpty())
-            return;
-
-        // Find result with ONNX path
-        ExecutionResult onnxResult = results.stream()
-                .filter(r -> r.getOnnxModelPath() != null)
-                .findFirst()
-                .orElse(null);
-
-        if (onnxResult == null) {
-            showAlert(Alert.AlertType.WARNING, "No Model", "No exported ONNX model found.");
+        ExecutionResult selected = resultsTable.getSelectionModel().getSelectedItem();
+        if (selected == null) {
+            showAlert(Alert.AlertType.WARNING, "No Selection", "Please select a result to export.");
             return;
         }
 
-        File sourceFile = new File(onnxResult.getOnnxModelPath());
-        if (!sourceFile.exists()) {
-            showAlert(Alert.AlertType.ERROR, "File Missing",
-                    "The temporary model file is missing:\n" + sourceFile.getAbsolutePath());
+        com.example.automl_prototype_1.service.IClassifier classifier = selected.getTrainedClassifier();
+        if (classifier == null) {
+            showAlert(Alert.AlertType.WARNING, "No Model",
+                    "The selected result does not have a trained model in memory.\nDid you run 'Refit' or is this a loaded result?");
             return;
         }
 
         FileChooser fileChooser = new FileChooser();
-        fileChooser.setTitle("Save ONNX Model");
-        fileChooser.getExtensionFilters().add(new FileChooser.ExtensionFilter("ONNX Model (*.onnx)", "*.onnx"));
-        fileChooser.setInitialFileName("model_" + System.currentTimeMillis() + ".onnx");
+        fileChooser.setTitle("Export Model");
+        // Smart filter: suggest .onnx if python/DL, else .ser
+        String name = classifier.getName();
+        boolean isPython = name.contains("Python") || name.contains("Deep") || name.contains("XGBoost")
+                || name.contains("MLP") || name.contains("BERT") || name.contains("CNN");
+
+        if (isPython) {
+            fileChooser.getExtensionFilters().add(new FileChooser.ExtensionFilter("ONNX Model (*.onnx)", "*.onnx"));
+            fileChooser.setInitialFileName("model_" + System.currentTimeMillis() + ".onnx");
+        } else {
+            fileChooser.getExtensionFilters().add(new FileChooser.ExtensionFilter("Java Model (*.ser)", "*.ser"));
+            fileChooser.setInitialFileName("model_" + System.currentTimeMillis() + ".ser");
+        }
 
         File destFile = fileChooser.showSaveDialog(getStage());
         if (destFile != null) {
-            try {
-                java.nio.file.Files.copy(sourceFile.toPath(), destFile.toPath(),
-                        java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+            com.example.automl_prototype_1.service.agentic.inference.OnnxExportService exportService = new com.example.automl_prototype_1.service.agentic.inference.OnnxExportService();
+
+            boolean success = exportService.exportModel(classifier, destFile.getAbsolutePath());
+
+            if (success) {
                 showAlert(Alert.AlertType.INFORMATION, "Export Successful",
                         "Model saved to:\n" + destFile.getAbsolutePath());
-            } catch (IOException e) {
-                LogService.error("ResultsView", "ONNX Copy Failed: " + e.getMessage());
-                showAlert(Alert.AlertType.ERROR, "Export Failed", "Could not save model:\n" + e.getMessage());
+            } else {
+                showAlert(Alert.AlertType.ERROR, "Export Failed", "Check logs for details.");
             }
         }
     }

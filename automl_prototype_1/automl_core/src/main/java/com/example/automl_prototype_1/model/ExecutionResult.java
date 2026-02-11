@@ -22,6 +22,9 @@ public class ExecutionResult {
     private String onnxModelPath;
     private int[] featureIndices; // Indices of selected features for this result
 
+    // Transient field to hold the live model for export (not serialized to JSON)
+    private transient com.example.automl_prototype_1.service.IClassifier trainedClassifier;
+
     public ExecutionResult() {
     }
 
@@ -139,6 +142,14 @@ public class ExecutionResult {
 
     public void setFeatureIndices(int[] featureIndices) {
         this.featureIndices = featureIndices;
+    }
+
+    public com.example.automl_prototype_1.service.IClassifier getTrainedClassifier() {
+        return trainedClassifier;
+    }
+
+    public void setTrainedClassifier(com.example.automl_prototype_1.service.IClassifier trainedClassifier) {
+        this.trainedClassifier = trainedClassifier;
     }
 
     @Override

@@ -10,6 +10,7 @@ import java.time.LocalDateTime;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import com.example.automl_prototype_1.service.progress.ProgressTrackingService;
 
 /**
  * Service to dump the application state to a JSON file periodically.

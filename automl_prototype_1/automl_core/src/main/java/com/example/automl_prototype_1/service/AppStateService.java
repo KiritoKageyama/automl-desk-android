@@ -21,10 +21,31 @@ public class AppStateService {
     private boolean isTuningEnabled = false;
     private boolean enableStandardization = true; // Default ON
     private boolean enableBalancedOptimization = true; // Default ON
-    private List<ExecutionResult> executionResults;
+    private List<ExecutionResult> executionResults; // RESTORED
     private com.example.automl_prototype_1.model.PreprocessingConfig preprocessingConfig = new com.example.automl_prototype_1.model.PreprocessingConfig(); // Default
                                                                                                                                                            // config
     private Dataset currentDataset; // For synthetic or in-memory datasets
+
+    // --- Phase 2: UI Expansion Enums ---
+    public enum DataType {
+        NUMERICAL, IMAGE, USER_PATTERN, TEXT
+    }
+
+    public enum DataQuality {
+        STRUCTURED, UNSTRUCTURED, SEMI_STRUCTURED
+    }
+
+    public enum TrainingMode {
+        STATISTICAL, ML_ALGORITHMS, NEURAL_NETWORK_MLP,
+        DEEP_LEARNING, CNN, VISION_TRANSFORMERS,
+        GEN_AI, ATTENTION_NETWORKS, RNN_LSTM,
+        AGENTIC_TRAINING, REINFORCEMENT_LEARNING
+    }
+
+    private DataType selectedDataType = DataType.NUMERICAL;
+    private DataQuality selectedDataQuality = DataQuality.STRUCTURED;
+    private boolean enableQualityCheck = false; // Default disabled as requested
+    private TrainingMode selectedTrainingMode = TrainingMode.ML_ALGORITHMS;
 
     private AppStateService() {
         LogService.info("AppStateService", "AppStateService Initialized (New Instance)");
@@ -284,6 +305,29 @@ public class AppStateService {
         LogService.info("AppStateService", "Feature Selection Enabled: " + featureSelectionEnabled);
     }
 
+    // --- Manual Feature Selection (Phase 4) ---
+    private boolean manualFeatureSelectionEnabled = false;
+    private java.util.List<Integer> manualFeatureIndices = new java.util.ArrayList<>();
+
+    public boolean isManualFeatureSelectionEnabled() {
+        return manualFeatureSelectionEnabled;
+    }
+
+    public void setManualFeatureSelectionEnabled(boolean manualFeatureSelectionEnabled) {
+        this.manualFeatureSelectionEnabled = manualFeatureSelectionEnabled;
+        LogService.info("AppStateService", "Manual Feature Selection Enabled: " + manualFeatureSelectionEnabled);
+    }
+
+    public java.util.List<Integer> getManualFeatureIndices() {
+        return manualFeatureIndices;
+    }
+
+    public void setManualFeatureIndices(java.util.List<Integer> manualFeatureIndices) {
+        this.manualFeatureIndices = manualFeatureIndices;
+        LogService.info("AppStateService", "Manual Feature Indices Updated: "
+                + (manualFeatureIndices != null ? manualFeatureIndices.size() : "null"));
+    }
+
     // --- Algorithm Hyperparameters (Phase 2) ---
     // Outer Key: Algorithm Name (e.g., "GA", "GWO")
     // Inner Key: Param Name (e.g., "crossoverRate")
@@ -318,6 +362,21 @@ public class AppStateService {
         return null;
     }
 
+    // --- String Params (Phase 4) ---
+    private Map<String, Map<String, String>> algorithmConfigStrings = new java.util.HashMap<>();
+
+    public void setAlgorithmConfigString(String algo, String param, String value) {
+        algorithmConfigStrings.computeIfAbsent(algo, k -> new java.util.HashMap<>()).put(param, value);
+        LogService.info("AppStateService", "Updated Config String [" + algo + "." + param + "] = " + value);
+    }
+
+    public String getAlgorithmConfigString(String algo, String param) {
+        if (algorithmConfigStrings.containsKey(algo)) {
+            return algorithmConfigStrings.get(algo).get(param);
+        }
+        return null; // or default
+    }
+
     // --- Ollama Settings ---
     private boolean isOllamaEnabled = true;
     private String ollamaModelName = "deepseek-r1:8b";
@@ -345,5 +404,55 @@ public class AppStateService {
 
     public void setOllamaUrl(String ollamaUrl) {
         this.ollamaUrl = ollamaUrl;
+    }
+
+    // --- Phase 2: UI Expansion Getters/Setters ---
+
+    public DataType getSelectedDataType() {
+        return selectedDataType;
+    }
+
+    public void setSelectedDataType(DataType selectedDataType) {
+        this.selectedDataType = selectedDataType;
+        LogService.info("AppState", "Data Type Selected: " + selectedDataType);
+    }
+
+    public DataQuality getSelectedDataQuality() {
+        return selectedDataQuality;
+    }
+
+    public void setSelectedDataQuality(DataQuality selectedDataQuality) {
+        this.selectedDataQuality = selectedDataQuality;
+        LogService.info("AppState", "Data Quality Selected: " + selectedDataQuality);
+    }
+
+    public boolean isEnableQualityCheck() {
+        return enableQualityCheck;
+    }
+
+    public void setEnableQualityCheck(boolean enableQualityCheck) {
+        this.enableQualityCheck = enableQualityCheck;
+        LogService.info("AppState", "Quality Check Enabled: " + enableQualityCheck);
+    }
+
+    public TrainingMode getSelectedTrainingMode() {
+        return selectedTrainingMode;
+    }
+
+    public void setSelectedTrainingMode(TrainingMode selectedTrainingMode) {
+        this.selectedTrainingMode = selectedTrainingMode;
+        LogService.info("AppState", "Training Mode Selected: " + selectedTrainingMode);
+    }
+
+    // --- Dynamic Models (Phase 9) ---
+    private Map<String, String> dynamicModels = new java.util.HashMap<>();
+
+    public void registerDynamicModel(String name, String hfModelId) {
+        dynamicModels.put(name, hfModelId);
+        LogService.info("AppState", "Registered Dynamic Model: " + name + " -> " + hfModelId);
+    }
+
+    public Map<String, String> getDynamicModels() {
+        return dynamicModels;
     }
 }

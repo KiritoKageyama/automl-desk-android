@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.scene.control.*?>
+<?import javafx.scene.layout.*?>
+<?import javafx.geometry.Insets?>
+
+<VBox xmlns:fx="http://javafx.com/fxml" fx:controller="com.example.automl_prototype_1.controller.ModelHubViewController" spacing="20" style="-fx-padding: 20;">
+    
+    <Label text="Model Hub &amp; Extensions" style="-fx-font-size: 24; -fx-font-weight: bold;"/>
+    
+    <HBox spacing="20">
+        <!-- Extensions Card -->
+        <VBox style="-fx-background-color: #f4f4f4; -fx-padding: 15; -fx-background-radius: 8;" HBox.hgrow="ALWAYS">
+            <Label text="Python Extensions" style="-fx-font-size: 16; -fx-font-weight: bold;"/>
+            <Label text="Install new pip packages." style="-fx-text-fill: gray;"/>
+            <Separator />
+            <HBox spacing="10">
+                <TextField fx:id="txtLibraryName" promptText="e.g. sentence-transformers" HBox.hgrow="ALWAYS"/>
+                <Button fx:id="btnInstallLib" text="Install" style="-fx-background-color: #2196F3; -fx-text-fill: white;"/>
+            </HBox>
+        </VBox>
+        
+        <!-- Model Zoo Card -->
+        <VBox style="-fx-background-color: #f4f4f4; -fx-padding: 15; -fx-background-radius: 8;" HBox.hgrow="ALWAYS">
+            <Label text="Hugging Face Model Zoo" style="-fx-font-size: 16; -fx-font-weight: bold;"/>
+            <Label text="Add new models to the registry." style="-fx-text-fill: gray;"/>
+            <Separator />
+            <GridPane hgap="10" vgap="10">
+                <Label text="HF Model ID:" GridPane.columnIndex="0" GridPane.rowIndex="0"/>
+                <TextField fx:id="txtModelId" promptText="e.g. facebook/bart-large" GridPane.columnIndex="1" GridPane.rowIndex="0" HBox.hgrow="ALWAYS"/>
+                
+                <Label text="Display Name:" GridPane.columnIndex="0" GridPane.rowIndex="1"/>
+                <TextField fx:id="txtModelName" promptText="e.g. My Custom BART" GridPane.columnIndex="1" GridPane.rowIndex="1" HBox.hgrow="ALWAYS"/>
+                
+                <Button fx:id="btnAddModel" text="Add Model" style="-fx-background-color: #4CAF50; -fx-text-fill: white;" GridPane.columnIndex="1" GridPane.rowIndex="2"/>
+            </GridPane>
+        </VBox>
+    </HBox>
+
+    <TextArea fx:id="txtConsole" editable="false" prefHeight="200" style="-fx-font-family: monospace;" promptText="Setup logs will appear here..."/>
+
+</VBox>

@@ -26,6 +26,9 @@ public class LocalLlmService {
     // Context Injection Services
     private final ProjectContextService projectContextService;
     private final CodeModificationService codeModService;
+    private final DomainGuardService domainGuardService;
+    private final CodeStructureService codeStructureService;
+    private final ConstitutionalService constitutionalService;
 
     // Lifecycle Management
     private static Process ollamaProcess = null;
@@ -39,6 +42,9 @@ public class LocalLlmService {
     public LocalLlmService() {
         this.projectContextService = new ProjectContextService();
         this.codeModService = new CodeModificationService();
+        this.domainGuardService = new DomainGuardService();
+        this.codeStructureService = new CodeStructureService();
+        this.constitutionalService = new ConstitutionalService();
 
         // Register Shutdown Hook
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
@@ -126,6 +132,33 @@ public class LocalLlmService {
         } catch (Exception e) {
             return false;
         }
+    }
+
+    // --- Safety Controls (Phase 3) ---
+
+    /**
+     * Emergency Stop: Kills the LLM process immediately.
+     */
+    public void emergencyStop() {
+        com.example.automl_prototype_1.service.LogService.warn("LocalLlmService", "🚨 EMERGENCY STOP TRIGGERED 🚨");
+        stopOllamaProcess();
+    }
+
+    /**
+     * Interrupts the current generation loop (Soft Stop).
+     */
+    public void interrupt() {
+        com.example.automl_prototype_1.service.LogService.info("LocalLlmService", "Interrupt signal received.");
+    }
+
+    /**
+     * Clears LLM context/cache and restarts.
+     */
+    public void clearCache() {
+        com.example.automl_prototype_1.service.LogService.info("LocalLlmService", "Clearing LLM Cache...");
+        this.cachedModel = null;
+        stopOllamaProcess();
+        // It will auto-restart on next request
     }
 
     /**
@@ -272,6 +305,14 @@ public class LocalLlmService {
     private final com.fasterxml.jackson.databind.ObjectMapper objectMapper = new com.fasterxml.jackson.databind.ObjectMapper();
 
     public String queryOllama(String prompt, String reserved) {
+        // Enforce Domain Boundaries
+        if (!domainGuardService.validate(prompt)) {
+            com.example.automl_prototype_1.service.LogService.warn("LocalLlmService",
+                    "Domain Boundary Rejection: Query outside of CS domain. Prompt: " +
+                            (prompt.length() > 50 ? prompt.substring(0, 50) + "..." : prompt));
+            return "[DOMAIN REJECTION] I can only assist with Computer Science related queries (Algorithms, ML, Systems, Coding, Security).";
+        }
+
         lastActivityTime.set(System.currentTimeMillis()); // Beat heart
         String modelToUse = getBestAvailableModel();
 
@@ -392,7 +433,52 @@ public class LocalLlmService {
 
         prompt.append("Generate the complete Java class now:\n");
 
-        return queryOllama(prompt.toString(), "code_gen");
+        String currentPrompt = prompt.toString();
+        String generatedCode = null;
+        int maxRetries = 3;
+
+        for (int i = 0; i < maxRetries; i++) {
+            com.example.automl_prototype_1.service.LogService.info("LocalLlmService",
+                    "Generating code (Attempt " + (i + 1) + "/" + maxRetries + ")...");
+            generatedCode = queryOllama(currentPrompt, "code_gen");
+
+            if (generatedCode == null)
+                return null;
+
+            // Clean code fences if present (Standardize output)
+            if (generatedCode.contains("```java")) {
+                generatedCode = generatedCode.split("```java")[1].split("```")[0].trim();
+            } else if (generatedCode.contains("```")) {
+                generatedCode = generatedCode.split("```")[1].trim();
+            }
+
+            // Phase 3: Constitutional Audit
+            ConstitutionalService.Verdict verdict = constitutionalService.auditCode(generatedCode);
+
+            if (verdict.allowed) {
+                com.example.automl_prototype_1.service.LogService.info("LocalLlmService", "Code Audit Passed.");
+                return generatedCode;
+            }
+
+            // If VETOED:
+            com.example.automl_prototype_1.service.LogService.warn("LocalLlmService",
+                    "Code Audit FAILED: " + verdict.reason);
+
+            // Reflexion: Feed the error back to the LLM
+            currentPrompt += "\n\n[SYSTEM ERROR]: Your previous code was rejected by the Security Auditor.\n" +
+                    "Reason: " + verdict.reason + "\n" +
+                    "Critically analyze your mistake and regenerate the code FIXING this violation.\n";
+
+            // Small delay to prevent tight loop thrashing
+            try {
+                Thread.sleep(1000);
+            } catch (InterruptedException ignored) {
+            }
+        }
+
+        com.example.automl_prototype_1.service.LogService.error("LocalLlmService",
+                "Failed to generate valid code after " + maxRetries + " attempts.");
+        return null;
     }
 
     /**
@@ -425,5 +511,36 @@ public class LocalLlmService {
         sb.append("--- END EXAMPLE ---\n");
 
         return sb.toString();
+    }
+
+    /**
+     * Analyzes the structure of a code file using the Phase 2 Analysis Engine.
+     */
+    public String analyzeCode(String filePath) {
+        return codeStructureService.analyzeFileSummary(filePath);
+    }
+
+    /**
+     * Explains a code file using Structured Code Understanding.
+     * 1. Extracts AST/Complexity via Python Engine.
+     * 2. Feeds structure + code to LLM.
+     */
+    public String explainCode(String filePath) {
+        String analysis = analyzeCode(filePath);
+        String codeContent;
+        try {
+            codeContent = codeModService.readFile(filePath);
+        } catch (Exception e) {
+            return "Error reading file: " + e.getMessage();
+        }
+
+        String prompt = String.format(
+                "You are a Senior Software Engineer. Analyze this Java file.\n\n" +
+                        "--- STRUCTURED METADATA ---\n%s\n" +
+                        "--- CODE ---\n%s\n\n" +
+                        "Explain the purpose of this class, its key methods, and comment on its complexity/architecture based on the metadata.",
+                analysis, codeContent);
+
+        return queryOllama(prompt, "explain_code");
     }
 }

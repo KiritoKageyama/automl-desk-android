@@ -1,7 +1,7 @@
 package com.example.automl_prototype_1.experiment;
 
 import com.example.automl_prototype_1.algorithm.*;
-import com.example.automl_prototype_1.classifier.*;
+import com.example.automl_prototype_1.classifier.cpu.*;
 import com.example.automl_prototype_1.dataprovider.CsvDataProvider;
 import com.example.automl_prototype_1.model.Dataset;
 import com.example.automl_prototype_1.model.ExecutionResult;

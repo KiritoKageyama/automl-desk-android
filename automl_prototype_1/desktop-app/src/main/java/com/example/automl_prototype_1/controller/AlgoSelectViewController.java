@@ -5,7 +5,7 @@ import javafx.collections.FXCollections;
 import javafx.fxml.FXML;
 
 import javafx.scene.control.*;
-import com.example.automl_prototype_1.service.HardwareAcceleratorService;
+import com.example.automl_prototype_1.gpu.HardwareAcceleratorService;
 import com.example.automl_prototype_1.service.AppStateService;
 
 public class AlgoSelectViewController {
@@ -29,6 +29,10 @@ public class AlgoSelectViewController {
     private ComboBox<String> cmbGpuSelector;
     @FXML
     private Button recommendButton;
+    @FXML
+    private Button quickScanBtn;
+    @FXML
+    private TextArea quickScanResultArea;
 
     // Advanced Mode Controls
     @FXML
@@ -92,7 +96,72 @@ public class AlgoSelectViewController {
             checkDE.setSelected(selected);
         });
 
+        // Quick Scan Button
+        if (quickScanBtn != null) {
+            quickScanBtn.setOnAction(event -> handleQuickScan());
+        }
+
         initExecutionSettings();
+    }
+
+    private void handleQuickScan() {
+        AppStateService appState = AppStateService.getInstance();
+        java.io.File datasetFile = appState.getSelectedDatasetFile();
+        if (datasetFile == null) {
+            if (quickScanResultArea != null) {
+                quickScanResultArea.setText("❌ Please upload a dataset first!");
+            }
+            return;
+        }
+
+        quickScanBtn.setDisable(true);
+        quickScanBtn.setText("Scanning...");
+        if (quickScanResultArea != null) {
+            quickScanResultArea.setText("Running empirical benchmark on data subsample...");
+        }
+
+        new Thread(() -> {
+            try {
+                com.example.automl_prototype_1.dataprovider.CsvDataProvider provider = new com.example.automl_prototype_1.dataprovider.CsvDataProvider();
+                com.example.automl_prototype_1.model.Dataset dataset = provider
+                        .loadDataset(new java.io.FileReader(datasetFile));
+
+                com.example.automl_prototype_1.service.agentic.EmpiricalBenchmarker benchmarker = new com.example.automl_prototype_1.service.agentic.EmpiricalBenchmarker();
+                java.util.Map<String, Double> results = benchmarker.benchmark(dataset);
+
+                // Sort by accuracy descending
+                StringBuilder sb = new StringBuilder();
+                sb.append("⚡ Quick Scan Results (Ranked by Accuracy)\n");
+                sb.append("══════════════════════════════════════\n\n");
+
+                results.entrySet().stream()
+                        .sorted((a, b) -> Double.compare(b.getValue(), a.getValue()))
+                        .forEach(entry -> {
+                            String bar = "█".repeat(Math.max(1, (int) (entry.getValue() * 20)));
+                            sb.append(String.format("%-15s  %.2f%%  %s\n",
+                                    entry.getKey(), entry.getValue() * 100, bar));
+                        });
+
+                sb.append("\n💡 Tip: Select the top-ranked classifier as your base model.");
+
+                javafx.application.Platform.runLater(() -> {
+                    if (quickScanResultArea != null) {
+                        quickScanResultArea.setText(sb.toString());
+                    }
+                    quickScanBtn.setDisable(false);
+                    quickScanBtn.setText("⚡ Quick Scan");
+                });
+
+            } catch (Exception ex) {
+                javafx.application.Platform.runLater(() -> {
+                    if (quickScanResultArea != null) {
+                        quickScanResultArea.setText("❌ Benchmark failed: " + ex.getMessage());
+                    }
+                    quickScanBtn.setDisable(false);
+                    quickScanBtn.setText("⚡ Quick Scan");
+                });
+            }
+        }).start();
     }
 
     private void initExecutionSettings() {
@@ -188,6 +257,52 @@ public class AlgoSelectViewController {
             if (forceGpuCheck != null) {
                 forceGpuCheck.selectedProperty().bindBidirectional(viewModel.forceGpuProperty());
             }
+
+            // --- Gen AI Architecture (Phase 8) ---
+            Label genAiLabel = new Label("Gen AI Architecture (BERT)");
+            genAiLabel.setStyle("-fx-font-weight: bold; -fx-padding: 10 0 5 0;");
+
+            CheckBox chkTrainFromScratch = new CheckBox("Train from Scratch");
+            chkTrainFromScratch.selectedProperty().bindBidirectional(viewModel.bertTrainFromScratchProperty());
+
+            TextField txtLayers = new TextField();
+            txtLayers.setPromptText("L");
+            txtLayers.setPrefWidth(50);
+            txtLayers.textProperty().bindBidirectional(viewModel.bertNumLayersProperty());
+
+            TextField txtHidden = new TextField();
+            txtHidden.setPromptText("H");
+            txtHidden.setPrefWidth(60);
+            txtHidden.textProperty().bindBidirectional(viewModel.bertHiddenSizeProperty());
+
+            TextField txtHeads = new TextField();
+            txtHeads.setPromptText("A");
+            txtHeads.setPrefWidth(50);
+            txtHeads.textProperty().bindBidirectional(viewModel.bertNumHeadsProperty());
+
+            javafx.scene.layout.HBox genAiConfig = new javafx.scene.layout.HBox(5,
+                    new Label("Layers:"), txtLayers,
+                    new Label("Hidden:"), txtHidden,
+                    new Label("Heads:"), txtHeads);
+            genAiConfig.setAlignment(javafx.geometry.Pos.CENTER_LEFT);
+
+            // Visibility: Only if BERT is selected
+            javafx.beans.binding.BooleanBinding isBert = javafx.beans.binding.Bindings.createBooleanBinding(
+                    () -> {
+                        String model = viewModel.selectedBaseModelProperty().get();
+                        return model != null && model.contains("BERT");
+                    },
+                    viewModel.selectedBaseModelProperty());
+
+            javafx.scene.layout.VBox genAiBox = new javafx.scene.layout.VBox(5, genAiLabel, chkTrainFromScratch,
+                    genAiConfig);
+            genAiBox.visibleProperty().bind(isBert);
+            genAiBox.managedProperty().bind(isBert);
+
+            // Config fields disabled if NOT training from scratch
+            genAiConfig.disableProperty().bind(chkTrainFromScratch.selectedProperty().not());
+
+            experimentalCard.getChildren().add(genAiBox);
         }
     }
 }

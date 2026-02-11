@@ -1,6 +1,9 @@
 package com.example.automl_prototype_1.service.agentic;
 
 import com.example.automl_prototype_1.model.Dataset;
+import com.example.automl_prototype_1.service.agentic.inference.IInferenceEngine;
+import com.example.automl_prototype_1.service.agentic.inference.OnnxInferenceEngine;
+import com.example.automl_prototype_1.service.agentic.inference.PythonInferenceEngine;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -264,5 +267,72 @@ public class AgenticAdvisor implements AutoCloseable {
          */
         public IInferenceEngine getInferenceEngine() {
                 return inferenceEngine;
+        }
+
+        /**
+         * Analyzes the dataset and suggests a preprocessing strategy (Phase 5).
+         * 
+         * @param dataset The dataset to analyze.
+         * @return A string summary of recommendations (e.g. "Transform: Log, Outliers:
+         *         True").
+         */
+        public String suggestPreprocessingStrategy(Dataset dataset) {
+                MetaFeatures meta = metaFeatureExtractor.extract(dataset);
+
+                // 1. Simple Heuristics (Fallback)
+                // Skewness > 1.0 -> Log
+                // Sparsity > 0.5 -> Interaction? Or PCA (not impl).
+                // Outliers? No cheap check for outliers here without full pass, but meta might
+                // have kurtosis?
+                // MetaFeatures currently has: inst, feats, classes, missing, sparsity.
+
+                // 2. LLM Advice
+                if (llmService.isAvailable()) {
+                        String stats = String.format("Rows: %d, Feats: %d, Sparsity: %.2f",
+                                        meta.getNumInstances(), meta.getNumFeatures(), meta.getSparsity());
+
+                        String prompt = String.format(
+                                        "Act as an expert Data Scientist. For a dataset with these stats: [%s], recommend a Preprocessing Strategy.\n"
+                                                        +
+                                                        "Options:\n" +
+                                                        "- Transformation: [None, Log, Sqrt, Auto-Skew]\n" +
+                                                        "- Feature Creation: [None, Interaction, Polynomial]\n" +
+                                                        "- Outlier Removal: [Yes/No] (IQR Method)\n" +
+                                                        "\n" +
+                                                        "Output ONLY the decision in this format: 'Transform: X, Creation: Y, Outliers: Z'.\n"
+                                                        +
+                                                        "Reasoning: Brief one-line explanation.",
+                                        stats);
+
+                        String response = llmService.queryOllama(prompt, "active");
+                        if (response != null && !response.isBlank()) {
+                                return response;
+                        }
+                }
+
+                // Fallback Logic
+                StringBuilder recommendation = new StringBuilder();
+                recommendation.append("Transform: ");
+                if (meta.getSparsity() > 0.8) {
+                        recommendation.append("None (High Sparsity)");
+                } else {
+                        recommendation.append("Auto-Skew (Safe Bet)");
+                }
+
+                recommendation.append(", Creation: ");
+                if (meta.getNumFeatures() < 10 && meta.getNumInstances() > 500) {
+                        recommendation.append("Interaction (Low Dim, Sufficient Data)");
+                } else {
+                        recommendation.append("None");
+                }
+
+                recommendation.append(", Outliers: ");
+                if (meta.getNumInstances() > 1000) {
+                        recommendation.append("True (Robustness)");
+                } else {
+                        recommendation.append("False (Preserve Data)");
+                }
+
+                return recommendation.toString();
         }
 }

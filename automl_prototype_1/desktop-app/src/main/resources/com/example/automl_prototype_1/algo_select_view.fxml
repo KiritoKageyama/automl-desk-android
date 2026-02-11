@@ -84,13 +84,20 @@
             </GridPane>
 
             <!-- Bottom Card: Recommendation (Centrally Aligned & Big) -->
-            <VBox spacing="15" styleClass="card" VBox.vgrow="ALWAYS" alignment="TOP_CENTER">
+        <VBox spacing="15" styleClass="card" VBox.vgrow="ALWAYS" alignment="TOP_CENTER">
                 <padding><Insets top="20" right="30" bottom="20" left="30"/></padding>
                 <Label styleClass="header-label" text="Recommendation" maxWidth="Infinity" alignment="CENTER"/>
-                <Button fx:id="recommendButton" text="Get Advice for my Dataset" maxWidth="400.0" styleClass="button-accent"/>
+                <HBox spacing="10" alignment="CENTER">
+                    <Button fx:id="recommendButton" text="Get Advice" styleClass="button-accent"/>
+                    <Button fx:id="quickScanBtn" text="⚡ Quick Scan" style="-fx-background-color: #059669; -fx-text-fill: white; -fx-font-weight: bold;"/>
+                </HBox>
                 <TextArea fx:id="adviceTextArea" editable="false" wrapText="true" VBox.vgrow="ALWAYS"
-                          prefHeight="400.0" minHeight="250.0"
+                          prefHeight="200.0" minHeight="150.0"
                           promptText="Click 'Get Advice' to see recommendations based on your dataset's characteristics."/>
+                <Label text="Quick Scan Results" styleClass="sub-header-label" style="-fx-font-size: 12px;"/>
+                <TextArea fx:id="quickScanResultArea" editable="false" wrapText="true"
+                          prefHeight="150.0" minHeight="100.0"
+                          promptText="Click '⚡ Quick Scan' to empirically benchmark classifiers on a data subsample."/>
             </VBox>
         </VBox>
     </content>

@@ -1,6 +1,6 @@
 package com.example.automl_prototype_1.service.agentic;
 
-import com.example.automl_prototype_1.service.HardwareAcceleratorService;
+import com.example.automl_prototype_1.gpu.HardwareAcceleratorService;
 import com.example.automl_prototype_1.service.LogService;
 import java.lang.management.ManagementFactory;
 import java.lang.management.OperatingSystemMXBean;

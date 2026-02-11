@@ -1,18 +1,20 @@
 package com.example.automl_prototype_1.registry;
 
 import com.example.automl_prototype_1.service.IClassifier;
-import com.example.automl_prototype_1.classifier.RandomForestClassifier;
-import com.example.automl_prototype_1.classifier.LogisticRegression;
-import com.example.automl_prototype_1.classifier.KnnClassifier;
-import com.example.automl_prototype_1.classifier.XGBoostClassifier;
-import com.example.automl_prototype_1.classifier.SvmClassifier;
-import com.example.automl_prototype_1.classifier.GpuKnnClassifier;
-import com.example.automl_prototype_1.classifier.GpuLogisticRegression;
-import com.example.automl_prototype_1.classifier.GpuRandomForestClassifier;
-import com.example.automl_prototype_1.classifier.GpuPythonSvmClassifier;
-import com.example.automl_prototype_1.classifier.GpuPythonXGBoostClassifier;
-import com.example.automl_prototype_1.classifier.GpuPythonCatBoostClassifier;
-import com.example.automl_prototype_1.classifier.GpuPythonLightGbmClassifier;
+import com.example.automl_prototype_1.classifier.cpu.RandomForestClassifier;
+import com.example.automl_prototype_1.classifier.cpu.LogisticRegression;
+import com.example.automl_prototype_1.classifier.cpu.KnnClassifier;
+import com.example.automl_prototype_1.classifier.cpu.XGBoostClassifier;
+import com.example.automl_prototype_1.classifier.cpu.SvmClassifier;
+import com.example.automl_prototype_1.classifier.MlpClassifier;
+import com.example.automl_prototype_1.classifier.CnnClassifier;
+import com.example.automl_prototype_1.classifier.gpu.GpuKnnClassifier;
+import com.example.automl_prototype_1.classifier.gpu.GpuLogisticRegression;
+import com.example.automl_prototype_1.classifier.gpu.GpuRandomForestClassifier;
+import com.example.automl_prototype_1.classifier.gpu.GpuPythonSvmClassifier;
+import com.example.automl_prototype_1.classifier.gpu.GpuPythonXGBoostClassifier;
+import com.example.automl_prototype_1.classifier.gpu.GpuPythonCatBoostClassifier;
+import com.example.automl_prototype_1.classifier.gpu.GpuPythonLightGbmClassifier;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -52,8 +54,14 @@ public class ClassifierRegistry {
             case "XGBoost" -> new XGBoostClassifier();
             case "SVM" -> new SvmClassifier();
 
+            // Deep Learning
+            case "Multilayer Perceptron (ANN)" -> new MlpClassifier();
+            case "CNN (Deep Learning)" -> new CnnClassifier();
+            case "BERT (Gen AI Text)" -> new com.example.automl_prototype_1.classifier.BertClassifier();
+
             // GPU Wrappers (Aparapi / Smile-GPU-Stub / Native)
             case "GPU-KNN" -> new GpuKnnClassifier();
+
             case "GPU-Logistic Regression" -> new GpuLogisticRegression();
             case "Random Forest (GPU Accelerated)" -> new GpuRandomForestClassifier();
             case "SVM (Linear GPU)" -> new GpuPythonSvmClassifier(1.0, "linear");
@@ -90,6 +98,11 @@ public class ClassifierRegistry {
         names.add("SVM");
         names.add("XGBoost");
         names.add("Logistic Regression");
+
+        // Deep Learning
+        names.add("Multilayer Perceptron (ANN)");
+        names.add("CNN (Deep Learning)");
+        names.add("BERT (Gen AI Text)");
 
         // Advanced (GPU) - Only if GPU is ENABLED
         if (com.example.automl_prototype_1.service.AppStateService.getInstance().isUseGpu()) {

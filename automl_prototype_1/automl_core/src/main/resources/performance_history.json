@@ -1,0 +1,13 @@
+{
+  "algorithms" : {
+    "CrashySort" : {
+      "attempts" : 4,
+      "successes" : 1,
+      "failures" : {
+        "CRASH" : 1,
+        "TIMEOUT" : 1,
+        "OOM" : 1
+      }
+    }
+  }
+}
