@@ -51,6 +51,9 @@ public class AlgoSelectViewController {
     }
 
     @FXML
+    private TabPane modalityTabPane;
+
+    @FXML
     private void initialize() {
         // Bind UI elements to ViewModel properties
 
@@ -63,10 +66,6 @@ public class AlgoSelectViewController {
         // K-Folds TextField
         kFoldsTextField.textProperty().bindBidirectional(viewModel.kFoldsProperty());
 
-        // Base Model ChoiceBox
-        baseModelChoiceBox.setItems(FXCollections.observableArrayList(viewModel.getAvailableClassifiers()));
-        baseModelChoiceBox.valueProperty().bindBidirectional(viewModel.selectedBaseModelProperty());
-
         // Algorithm Checkboxes
         checkGA.selectedProperty().bindBidirectional(viewModel.gaSelectedProperty());
         checkIGPSO.selectedProperty().bindBidirectional(viewModel.igpsoSelectedProperty());
@@ -77,6 +76,26 @@ public class AlgoSelectViewController {
         checkSA.selectedProperty().bindBidirectional(viewModel.saSelectedProperty());
         checkGWO.selectedProperty().bindBidirectional(viewModel.gwoSelectedProperty());
         checkDE.selectedProperty().bindBidirectional(viewModel.deSelectedProperty());
+
+        // Base Model ChoiceBox - Initial Population & Binding
+        // Note: We don't bind strictly to ViewModel list anymore, as we filter it in
+        // View.
+        // We only bind the Selected Item.
+        baseModelChoiceBox.valueProperty().bindBidirectional(viewModel.selectedBaseModelProperty());
+
+        // Tab Selection Listener for Filtering
+        if (modalityTabPane != null) {
+            modalityTabPane.getSelectionModel().selectedItemProperty().addListener((obs, oldTab, newTab) -> {
+                if (newTab != null) {
+                    filterModelsByTab(newTab.getText());
+                }
+            });
+            // Initial Filter
+            filterModelsByTab("Machine Learning");
+        } else {
+            // Fallback if FXML not updated or ID missing
+            baseModelChoiceBox.setItems(FXCollections.observableArrayList(viewModel.getAvailableClassifiers()));
+        }
 
         // Button Action
         recommendButton.setText("Get Advice");
@@ -102,6 +121,50 @@ public class AlgoSelectViewController {
         }
 
         initExecutionSettings();
+    }
+
+    private void filterModelsByTab(String tabName) {
+        java.util.List<String> allModels = viewModel.getAvailableClassifiers();
+        java.util.List<String> filtered = new java.util.ArrayList<>();
+        java.util.Set<String> builtin = new java.util.HashSet<>(java.util.List.of(
+                "KNN", "Random Forest", "SVM", "XGBoost", "Logistic Regression",
+                "Multilayer Perceptron (ANN)", "CNN (Deep Learning)", "BERT (Gen AI Text)",
+                "GPU-KNN", "GPU-Logistic Regression", "Random Forest (GPU Accelerated)",
+                "XGBoost (GPU Accelerated)", "SVM (Linear GPU)",
+                "XGBoost (Python/GPU Bridge)", "SVM (Python/GPU/RBF Bridge)",
+                "CatBoost (Python/GPU Bridge)", "LightGBM (Python/GPU Bridge)",
+                "LSTM (Time Series)"));
+
+        for (String m : allModels) {
+            boolean isDynamic = !builtin.contains(m);
+            if (tabName.contains("Machine Learning")) {
+                if (!m.contains("CNN") && !m.contains("BERT") && !m.contains("LSTM")
+                        && !m.contains("Multilayer Perceptron") && !isDynamic) {
+                    filtered.add(m);
+                }
+            } else if (tabName.contains("Deep Learning")) {
+                if (m.contains("LSTM") || m.contains("Multilayer Perceptron")) {
+                    filtered.add(m);
+                }
+            } else if (tabName.contains("CNN")) {
+                if (m.contains("CNN")) {
+                    filtered.add(m);
+                }
+            } else if (tabName.contains("LLM")) {
+                if (m.contains("BERT") || m.contains("Text") || (isDynamic && !m.startsWith("CLASS:"))) {
+                    filtered.add(m);
+                }
+            } else if (tabName.contains("Generative AI")) {
+                if (m.contains("Gen AI") || isDynamic) {
+                    filtered.add(m);
+                }
+            }
+        }
+
+        baseModelChoiceBox.setItems(FXCollections.observableArrayList(filtered));
+        if (!filtered.isEmpty()) {
+            baseModelChoiceBox.getSelectionModel().select(0);
+        }
     }
 
     private void handleQuickScan() {
@@ -208,6 +271,9 @@ public class AlgoSelectViewController {
                     chkUseGpu.setText("Use GPU (Not Detected)");
                     chkUseGpu.setDisable(true);
                 }
+
+                // Refresh list after initial check confirms state
+                refreshClassifierList();
             });
 
             gpuCheckTask.setOnFailed(e -> {
@@ -219,7 +285,10 @@ public class AlgoSelectViewController {
 
             new Thread(gpuCheckTask).start();
 
-            chkUseGpu.selectedProperty().addListener((obs, old, val) -> AppStateService.getInstance().setUseGpu(val));
+            chkUseGpu.selectedProperty().addListener((obs, old, val) -> {
+                AppStateService.getInstance().setUseGpu(val);
+                refreshClassifierList();
+            });
         }
 
         // WSL
@@ -256,6 +325,7 @@ public class AlgoSelectViewController {
             }
             if (forceGpuCheck != null) {
                 forceGpuCheck.selectedProperty().bindBidirectional(viewModel.forceGpuProperty());
+                forceGpuCheck.selectedProperty().addListener((obs, old, val) -> refreshClassifierList());
             }
 
             // --- Gen AI Architecture (Phase 8) ---
@@ -303,6 +373,33 @@ public class AlgoSelectViewController {
             genAiConfig.disableProperty().bind(chkTrainFromScratch.selectedProperty().not());
 
             experimentalCard.getChildren().add(genAiBox);
+        }
+    }
+
+    private void refreshClassifierList() {
+        if (baseModelChoiceBox == null)
+            return;
+
+        String currentSelection = baseModelChoiceBox.getValue();
+        java.util.List<String> available = viewModel.getAvailableClassifiers();
+
+        baseModelChoiceBox.setItems(FXCollections.observableArrayList(available));
+
+        if (currentSelection != null && available.contains(currentSelection)) {
+            baseModelChoiceBox.setValue(currentSelection);
+        } else if (!available.isEmpty()) {
+            baseModelChoiceBox.setValue(available.get(0));
+        }
+    }
+
+    public void selectTab(String tabName) {
+        if (modalityTabPane != null) {
+            for (javafx.scene.control.Tab tab : modalityTabPane.getTabs()) {
+                if (tab.getText().contains(tabName) || tabName.contains(tab.getText())) {
+                    modalityTabPane.getSelectionModel().select(tab);
+                    break;
+                }
+            }
         }
     }
 }

@@ -131,7 +131,7 @@
             <!-- Actions -->
             <HBox spacing="15.0" alignment="CENTER_RIGHT">
                 <Button fx:id="viewReportButton" onAction="#handleViewReport" styleClass="action-button" text="View Detailed Report"/>
-                <Button fx:id="exportOnnxButton" onAction="#handleExportOnnx" styleClass="action-button" text="Export Model" visible="false" managed="false" style="-fx-background-color: #27ae60;"/>
+                <Button fx:id="exportOnnxButton" onAction="#handleExportOnnx" styleClass="action-button" text="Export Model" style="-fx-background-color: #27ae60;"/>
                 <Button fx:id="exportButton" onAction="#handleExport" styleClass="action-button" text="Export to CSV"/>
                 <Button fx:id="saveButton" onAction="#handleSaveJson" styleClass="secondary-button" text="Save JSON"/>
                 <Button onAction="#handleBack" styleClass="secondary-button" text="Back to Dashboard"/>

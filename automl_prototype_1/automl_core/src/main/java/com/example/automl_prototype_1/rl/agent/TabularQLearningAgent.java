@@ -127,8 +127,17 @@ public class TabularQLearningAgent implements IRLAgent {
         }
 
         double[] qValues = new double[actionSpaceSize];
-        // In a real system, we would map stateKey -> concept -> prior value.
-        // For now, initialize with 0.0.
+        // Seed new states from injected concept priors (average importance as bias).
+        if (!priorKnowledge.isEmpty()) {
+            double bias = priorKnowledge.values().stream().mapToDouble(Double::doubleValue).average().orElse(0.0);
+            String lowerKey = stateKey.toLowerCase();
+            for (java.util.Map.Entry<String, Double> entry : priorKnowledge.entrySet()) {
+                if (lowerKey.contains(entry.getKey().toLowerCase())) {
+                    bias = Math.max(bias, entry.getValue());
+                }
+            }
+            java.util.Arrays.fill(qValues, bias);
+        }
         qTable.put(stateKey, qValues);
         return qValues;
     }

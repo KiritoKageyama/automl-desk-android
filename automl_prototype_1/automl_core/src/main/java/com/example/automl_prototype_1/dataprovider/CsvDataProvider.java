@@ -1,14 +1,11 @@
 package com.example.automl_prototype_1.dataprovider;
 
 import com.example.automl_prototype_1.model.Dataset;
-import org.apache.commons.csv.CSVFormat;
-import org.apache.commons.csv.CSVParser;
-import org.apache.commons.csv.CSVRecord;
 
 import java.io.IOException;
 import java.io.Reader;
+import java.io.BufferedReader;
 import java.util.ArrayList;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.HashMap;
@@ -16,11 +13,12 @@ import java.util.HashMap;
 /**
  * Provides functionality to load datasets from CSV sources efficiently.
  * Loads data directly into primitive arrays to minimize memory usage.
+ * Now uses FastCsvParser (Zero-Dependency) for parsing.
  */
 public class CsvDataProvider {
 
     /**
-     * Loads a Dataset from the given Reader.
+     * Loads a Dataset from the given Reader using FastCsvParser.
      * Assumes the CSV data has headers in the first row.
      *
      * @param dataReader The Reader providing the CSV data.
@@ -32,83 +30,67 @@ public class CsvDataProvider {
             throw new IOException("Invalid Reader provided (null). Cannot load dataset.");
         }
 
-        System.out.println("CsvDataProvider: Loading dataset from Reader (Truly Efficient Mode)...");
+        System.out.println("CsvDataProvider: Loading dataset using FastCsvParser (NIO)...");
         List<double[]> tempRows = new ArrayList<>();
         List<String> headers = null;
-        // boolean hasHeaders = false; // Removed unused variable
 
-        // Build format with robust settings
-        CSVFormat format = CSVFormat.DEFAULT.builder()
-                .setTrim(true)
-                .setIgnoreEmptyLines(true)
-                .build();
+        FastCsvParser parser = new FastCsvParser();
 
-        // Use Iterator to stream records instead of loading all into memory
-        try (CSVParser parser = format.parse(dataReader)) {
-            Iterator<CSVRecord> iterator = parser.iterator();
+        // We will read line by line to keep memory strictly low, rather than parseAll
+        try (BufferedReader br = (dataReader instanceof BufferedReader) ? (BufferedReader) dataReader
+                : new BufferedReader(dataReader)) {
+            String line;
+            boolean isFirstRow = true;
+            int numCols = 0;
 
-            if (!iterator.hasNext()) {
-                throw new IOException("CSV file is empty.");
-            }
-
-            // 1. Analyze First Record
-            CSVRecord firstRecord = iterator.next();
-            int numCols = firstRecord.size();
-            boolean firstRowIsHeader = false;
-
-            // Heuristic A: Check for non-numeric types in first row
-            boolean hasNonNumeric = false;
-            for (int i = 0; i < numCols; i++) {
-                String val = firstRecord.get(i).trim();
-                if (val.isEmpty())
-                    continue;
-                try {
-                    Double.parseDouble(val);
-                } catch (NumberFormatException e) {
-                    hasNonNumeric = true; // Found a string, likely a header
-                    break;
-                }
-            }
-
-            // Heuristic B: Specific domain check (kept for backward compat but guarded)
-            boolean isBreastCancerId = (numCols > 1 && firstRecord.get(1).matches("[MmBb]"));
-
-            if (hasNonNumeric && !isBreastCancerId) {
-                firstRowIsHeader = true;
-            }
-
-            // 2. Setup Headers
-            if (firstRowIsHeader) {
-                System.out.println("CsvDataProvider: Header row detected.");
-                headers = new ArrayList<>();
-                for (String h : firstRecord) {
-                    headers.add(h.trim());
-                }
-            } else {
-                System.out.println("CsvDataProvider: No header row detected. Generating standard column names...");
-                headers = new ArrayList<>();
-                for (int i = 0; i < numCols; i++) {
-                    if (i == numCols - 1) {
-                        headers.add("Target_Class");
-                    } else {
-                        headers.add("Column_" + i);
-                    }
-                }
-            }
-
-            // 3. Prepare Encoders
             Map<Integer, Map<String, Double>> columnEncoders = new HashMap<>();
             Map<Integer, Double> nextCodes = new HashMap<>();
 
-            // 4. Process Records (Streamed)
-            // If the first row was NOT a header, we must process it as data
-            if (!firstRowIsHeader) {
-                processRecord(firstRecord, tempRows, numCols, columnEncoders, nextCodes);
-            }
+            while ((line = br.readLine()) != null) {
+                if (line.trim().isEmpty())
+                    continue;
 
-            // Iterate the rest
-            while (iterator.hasNext()) {
-                processRecord(iterator.next(), tempRows, numCols, columnEncoders, nextCodes);
+                List<String> record = parser.parseLine(line);
+                if (record.isEmpty())
+                    continue;
+
+                if (isFirstRow) {
+                    numCols = record.size();
+
+                    // Heuristic A: Check for non-numeric types in first row
+                    boolean hasNonNumeric = false;
+                    for (int i = 0; i < numCols; i++) {
+                        String val = record.get(i);
+                        if (val.isEmpty())
+                            continue;
+                        try {
+                            Double.parseDouble(val);
+                        } catch (NumberFormatException e) {
+                            hasNonNumeric = true;
+                            break;
+                        }
+                    }
+
+                    // Heuristic B: Specific domain check
+                    boolean isBreastCancerId = (numCols > 1 && record.get(1).matches("[MmBb]"));
+
+                    if (hasNonNumeric && !isBreastCancerId) {
+                        System.out.println("CsvDataProvider: Header row detected.");
+                        headers = new ArrayList<>(record);
+                    } else {
+                        System.out.println(
+                                "CsvDataProvider: No header row detected. Generating standard column names...");
+                        headers = new ArrayList<>();
+                        for (int i = 0; i < numCols; i++) {
+                            headers.add((i == numCols - 1) ? "Target_Class" : "Column_" + i);
+                        }
+                        // Process first row as data since it wasn't a header
+                        processRecord(record, tempRows, numCols, columnEncoders, nextCodes);
+                    }
+                    isFirstRow = false;
+                } else {
+                    processRecord(record, tempRows, numCols, columnEncoders, nextCodes);
+                }
             }
 
             if (tempRows.isEmpty()) {
@@ -122,14 +104,14 @@ public class CsvDataProvider {
         return new Dataset(null, headers, features, null, null);
     }
 
-    private void processRecord(CSVRecord record, List<double[]> rows, int expectedCols,
+    private void processRecord(List<String> record, List<double[]> rows, int expectedCols,
             Map<Integer, Map<String, Double>> encoders,
             Map<Integer, Double> nextCodes) {
 
         double[] rowData = new double[expectedCols];
         for (int i = 0; i < expectedCols; i++) {
             if (i < record.size()) {
-                String val = record.get(i).trim();
+                String val = record.get(i);
                 try {
                     if (val.isEmpty()) {
                         rowData[i] = 0.0;

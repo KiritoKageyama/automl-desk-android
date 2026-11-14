@@ -47,7 +47,15 @@
         <dependency> <groupId>com.github.almasb</groupId> <artifactId>fxgl</artifactId> <exclusions> <exclusion> <groupId>org.openjfx</groupId> <artifactId>*</artifactId> </exclusion> </exclusions> </dependency>
 
         <dependency> <groupId>eu.hansolo</groupId> <artifactId>toolboxfx</artifactId> <exclusions> <exclusion> <groupId>org.openjfx</groupId> <artifactId>*</artifactId> </exclusion> </exclusions> </dependency>
+
         <dependency> <groupId>eu.hansolo</groupId> <artifactId>toolbox</artifactId> <exclusions> <exclusion> <groupId>org.openjfx</groupId> <artifactId>*</artifactId> </exclusion> </exclusions> </dependency>
+
+        <!-- Global Keyboard Hook for RL (Behavioral Cloning from External Games) -->
+        <dependency>
+            <groupId>com.github.kwhat</groupId>
+            <artifactId>jnativehook</artifactId>
+            <version>2.2.2</version>
+        </dependency>
 
         <!-- Jackson for UI-driven Export/Save (Version inherited) -->
         <dependency>

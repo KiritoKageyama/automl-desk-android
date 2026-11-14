@@ -16,6 +16,7 @@ import androidx.navigation.NavHostController // Explicit import can sometimes he
 // --- Ensure these imports correctly point to your files ---
 import com.shadowtengu.automl.androidapp.ui.navigation.AppDestinations
 import com.shadowtengu.automl.androidapp.ui.screens.AlgorithmSelectionScreen
+import com.shadowtengu.automl.androidapp.ui.screens.MonitorScreen
 import com.shadowtengu.automl.androidapp.ui.screens.ResultsScreen
 import com.shadowtengu.automl.androidapp.ui.screens.SettingsScreen
 import com.shadowtengu.automl.androidapp.ui.screens.UploadScreen
@@ -72,14 +73,9 @@ fun AppScreen() {
                 SettingsScreen(navController = navController)
             }
 
-            // --- Remove the duplicate UploadScreen composable block ---
-            // composable(AppDestinations.UPLOAD_ROUTE) { // <<< DELETE THIS BLOCK
-            //     UploadScreen(navController = navController)
-            // }
-
-            // Add more composable(...) blocks for any other screens
+            composable(route = AppDestinations.MONITOR_ROUTE) {
+                MonitorScreen(navController = navController)
+            }
         }
     }
 }
-
-// No need for Greeting or GreetingPreview if you removed them

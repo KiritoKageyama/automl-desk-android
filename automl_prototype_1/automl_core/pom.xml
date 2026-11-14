@@ -33,11 +33,13 @@
             <artifactId>smile-math</artifactId>
         </dependency>
 
-        <!-- Apache Commons CSV -->
+        <!-- Apache Commons CSV REMOVED (Replaced by FastCsvParser) -->
+        <!--
         <dependency>
             <groupId>org.apache.commons</groupId>
             <artifactId>commons-csv</artifactId>
         </dependency>
+        -->
 
         <!-- Jackson for JSON/Serialization -->
         <dependency>
@@ -52,9 +54,20 @@
         </dependency>
 
         <!-- Testing -->
-    <dependency>
+        <dependency>
             <groupId>org.junit.jupiter</groupId>
             <artifactId>junit-jupiter-engine</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter-api</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter-params</artifactId>
+            <version>5.10.2</version>
             <scope>test</scope>
         </dependency>
 
@@ -97,6 +110,41 @@
             <groupId>org.openjfx</groupId>
             <artifactId>javafx-graphics</artifactId>
             <version>21.0.1</version>
+        </dependency>
+
+        <!-- Phase 8: Optical Character Recognition (OCR) for "Reading" Screen -->
+        <dependency>
+            <groupId>net.sourceforge.tess4j</groupId>
+            <artifactId>tess4j</artifactId>
+            <version>5.9.0</version>
+        </dependency>
+
+        <!-- Phase 7: Window Focus & Privacy (JNA) -->
+        <dependency>
+            <groupId>net.java.dev.jna</groupId>
+            <artifactId>jna-platform</artifactId>
+            <version>5.14.0</version>
+        </dependency>
+
+        <!-- XGBoost4J — Native CPU XGBoost classification -->
+        <dependency>
+            <groupId>ml.dmlc</groupId>
+            <artifactId>xgboost4j_2.13</artifactId>
+            <version>2.0.3</version>
+        </dependency>
+
+        <!-- Apache Commons Math3 — statistics, distributions, used by algorithms -->
+        <dependency>
+            <groupId>org.apache.commons</groupId>
+            <artifactId>commons-math3</artifactId>
+            <version>3.6.1</version>
+        </dependency>
+
+        <!-- Apache Commons Lang3 — string utils, reflection helpers -->
+        <dependency>
+            <groupId>org.apache.commons</groupId>
+            <artifactId>commons-lang3</artifactId>
+            <version>3.14.0</version>
         </dependency>
     </dependencies>
 

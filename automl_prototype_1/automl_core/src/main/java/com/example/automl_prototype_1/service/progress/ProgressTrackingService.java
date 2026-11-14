@@ -2,7 +2,7 @@ package com.example.automl_prototype_1.service.progress;
 
 import com.example.automl_prototype_1.model.progress.*;
 import com.example.automl_prototype_1.service.pipeline.EtaEstimator;
-import com.example.automl_prototype_1.service.HistoryService;
+// REMOVED: import com.example.automl_prototype_1.service.HistoryService;
 
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
@@ -153,7 +153,8 @@ public class ProgressTrackingService {
 
         // Trigger Archive & Summarization
         if (finalState != null) {
-            HistoryService.getInstance().archiveCurrentRun(algoId, finalState.bestScore());
+            // HistoryService.getInstance().archiveCurrentRun(algoId,
+            // finalState.bestScore());
         }
 
         notifyComplete(algoId);

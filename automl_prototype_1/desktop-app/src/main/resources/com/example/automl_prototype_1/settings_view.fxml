@@ -26,8 +26,9 @@
             <Label text="Select your preferred application theme."/>
 
             <HBox spacing="10" alignment="CENTER_LEFT" style="-fx-padding: 10 0 0 0;">
-                <Button fx:id="lightThemeButton" text="Switch to Light Mode"/>
-                <Button fx:id="darkThemeButton" text="Switch to Dark Mode" styleClass="button-accent"/>
+                <Button fx:id="lightThemeButton" text="Light"/>
+                <Button fx:id="darkThemeButton" text="Atelier" styleClass="button-accent"/>
+                <Button fx:id="tradingThemeButton" text="Trading"/>
             </HBox>
         </VBox>
 
@@ -119,6 +120,29 @@
                     <javafx.scene.control.Spinner fx:id="gwoPopSpinner" prefWidth="80" editable="true"/>
                 </HBox>
             </VBox>
+        </VBox>
+
+        <!-- Card for Modular Navigation -->
+        <VBox spacing="10" styleClass="card" alignment="TOP_LEFT">
+            <padding>
+                <Insets bottom="20.0" left="30.0" right="30.0" top="20.0"/>
+            </padding>
+            <Label styleClass="sub-header-label" text="UI Layout &amp; Features"/>
+            <Separator/>
+            <Label text="Hide unused modules from the sidebar to save space."/>
+            
+            <HBox spacing="30">
+                <VBox spacing="10">
+                    <CheckBox fx:id="chkShowMl" text="Traditional ML" selected="true"/>
+                    <CheckBox fx:id="chkShowDl" text="Deep Learning" selected="true"/>
+                    <CheckBox fx:id="chkShowCnn" text="Vision (CNN)" selected="true"/>
+                </VBox>
+                <VBox spacing="10">
+                    <CheckBox fx:id="chkShowLlm" text="Text (LLM/SLM)" selected="true"/>
+                    <CheckBox fx:id="chkShowGenAi" text="Generative AI" selected="true"/>
+                    <CheckBox fx:id="chkShowRl" text="RL Lab" selected="true"/>
+                </VBox>
+            </HBox>
         </VBox>
 
         <!-- Card for AI Assistant -->

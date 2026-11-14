@@ -34,6 +34,31 @@ public class OnnxInferenceEngine implements IInferenceEngine {
         }
     }
 
+    /**
+     * Eagerly create/cache an OrtSession for the given onnx file path.
+     */
+    public void preload(String onnxPath) {
+        sessionCache.computeIfAbsent(onnxPath, path -> {
+            try {
+                return env.createSession(path, sessionOptions);
+            } catch (Exception e) {
+                throw new RuntimeException("Failed to load ONNX model: " + path, e);
+            }
+        });
+        LogService.info("OnnxInference", "Preloaded session: " + onnxPath);
+    }
+
+    public void unload(String onnxPath) {
+        OrtSession session = sessionCache.remove(onnxPath);
+        if (session != null) {
+            try {
+                session.close();
+            } catch (Exception e) {
+                LogService.warn("OnnxInference", "Failed to close session: " + e.getMessage());
+            }
+        }
+    }
+
     @Override
     public CompletableFuture<int[]> predict(String modelId, double[][] features) {
         return CompletableFuture.supplyAsync(() -> {

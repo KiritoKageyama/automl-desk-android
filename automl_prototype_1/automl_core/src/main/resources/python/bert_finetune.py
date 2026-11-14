@@ -121,9 +121,13 @@ class BertWrapper:
         
         self.model.train()
         for epoch in range(self.epochs):
+            if callable(getattr(self, 'cancel_check', None)) and self.cancel_check():
+                raise InterruptedError("BERT training cancelled")
             total_loss = 0
             start = time.time()
             for batch in loader:
+                if callable(getattr(self, 'cancel_check', None)) and self.cancel_check():
+                    raise InterruptedError("BERT training cancelled")
                 input_ids = batch['input_ids'].to(self.device)
                 attention_mask = batch['attention_mask'].to(self.device)
                 labels = batch['labels'].to(self.device)
@@ -172,5 +176,6 @@ def train(X, y, params):
     batch_size = int(params.get('batch_size', 16))
     
     wrapper = BertWrapper(epochs=epochs, batch_size=batch_size, params=params)
+    wrapper.cancel_check = params.get('cancel_check')
     wrapper.fit(X, y)
     return wrapper

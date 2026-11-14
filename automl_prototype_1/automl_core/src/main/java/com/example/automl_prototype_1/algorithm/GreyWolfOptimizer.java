@@ -142,10 +142,6 @@ public class GreyWolfOptimizer extends AbstractFeatureSelectionAlgorithm {
         double a = 2.0 - (2.0 * iteration / maxIterations);
 
         // Update positions using Alpha, Beta, Delta
-        // We use a temporary array for new positions to be synchronous
-        // We use a temporary array for new positions to be synchronous
-        // double[][] newPositions = new double[populationSize][numFeatures]; // Removed
-        // unused variable
 
         // Parallel update calculation
         // Note: ThreadLocalRandom is needed inside parallel stream

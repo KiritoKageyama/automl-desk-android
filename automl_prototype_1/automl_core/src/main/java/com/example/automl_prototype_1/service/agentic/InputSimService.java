@@ -37,6 +37,10 @@ public class InputSimService {
     public void performAction(int action) {
         if (robot == null)
             return;
+        if (!com.example.automl_prototype_1.service.DesktopAutomationGate.getInstance()
+                .requireEnabled("InputSimService")) {
+            return;
+        }
         // Legacy/Default mapping
         if (keyProfile.equals("ARROWS")) {
             // Racing Games (NFS often uses Arrows)
@@ -165,5 +169,68 @@ public class InputSimService {
     public void releaseKey(int keyCode) {
         if (robot != null)
             robot.keyRelease(keyCode);
+    }
+
+    // --- Universal Desktop Control (Mouse & Text) ---
+
+    public void mouseMove(int x, int y) {
+        if (robot == null)
+            return;
+        if (!com.example.automl_prototype_1.service.DesktopAutomationGate.getInstance()
+                .requireEnabled("InputSim.mouseMove")) {
+            return;
+        }
+        robot.mouseMove(x, y);
+    }
+
+    public void mouseLeftClick() {
+        if (robot == null)
+            return;
+        if (!com.example.automl_prototype_1.service.DesktopAutomationGate.getInstance()
+                .requireEnabled("InputSim.mouseLeftClick")) {
+            return;
+        }
+        robot.mousePress(java.awt.event.InputEvent.BUTTON1_DOWN_MASK);
+        robot.delay(50);
+        robot.mouseRelease(java.awt.event.InputEvent.BUTTON1_DOWN_MASK);
+    }
+
+    public void mouseRightClick() {
+        if (robot == null)
+            return;
+        if (!com.example.automl_prototype_1.service.DesktopAutomationGate.getInstance()
+                .requireEnabled("InputSim.mouseRightClick")) {
+            return;
+        }
+        robot.mousePress(java.awt.event.InputEvent.BUTTON3_DOWN_MASK);
+        robot.delay(50);
+        robot.mouseRelease(java.awt.event.InputEvent.BUTTON3_DOWN_MASK);
+    }
+
+    public void typeText(String text) {
+        if (robot == null || text == null)
+            return;
+        if (!com.example.automl_prototype_1.service.DesktopAutomationGate.getInstance()
+                .requireEnabled("InputSim.typeText")) {
+            return;
+        }
+        for (char c : text.toCharArray()) {
+            int keyCode = java.awt.event.KeyEvent.getExtendedKeyCodeForChar(c);
+            if (Character.isUpperCase(c)) {
+                robot.keyPress(java.awt.event.KeyEvent.VK_SHIFT);
+            }
+            try {
+                robot.keyPress(keyCode);
+                robot.delay(10);
+                robot.keyRelease(keyCode);
+            } catch (IllegalArgumentException e) {
+                // Handle special chars or just ignore unknown
+                LogService.warn("InputSim", "Cannot type char: " + c);
+            }
+            if (Character.isUpperCase(c)) {
+                robot.keyRelease(java.awt.event.KeyEvent.VK_SHIFT);
+            }
+            robot.delay(20);
+        }
     }
 }

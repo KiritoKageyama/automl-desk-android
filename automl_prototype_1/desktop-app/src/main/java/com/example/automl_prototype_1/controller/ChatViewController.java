@@ -11,7 +11,7 @@ import javafx.scene.control.TextArea;
 import javafx.scene.layout.VBox;
 import javafx.scene.text.Text;
 import javafx.scene.text.TextFlow;
-import com.example.automl_prototype_1.service.agentic.LocalLlmService;
+// REMOVED: import com.example.automl_prototype_1.service.agentic.LocalLlmService;
 
 public class ChatViewController {
 
@@ -27,7 +27,7 @@ public class ChatViewController {
     private Button sendButton;
 
     @FXML
-    private final LocalLlmService llmService = new LocalLlmService();
+    private final OllamaService llmService = OllamaService.getInstance();
     private com.example.automl_prototype_1.service.agentic.ErrorMonitorService errorMonitor;
 
     // Callback for closing the panel
@@ -254,7 +254,7 @@ public class ChatViewController {
             status.setText("Updating...");
             new Thread(() -> {
                 try {
-                    ConstitutionalService cs = new ConstitutionalService();
+                    ConstitutionalService cs = ConstitutionalService.getInstance();
                     cs.addRule(id, condition, verdict, reason);
                     Platform.runLater(() -> {
                         status.setText("Success! Constitution Amended.");
@@ -329,7 +329,7 @@ public class ChatViewController {
         btn.setOnAction(e -> {
             btn.setDisable(true);
             new Thread(() -> {
-                ConstitutionalService cs = new ConstitutionalService();
+                ConstitutionalService cs = ConstitutionalService.getInstance();
                 cs.setStrictMode(enable);
                 Platform.runLater(() -> {
                     status.setText("Success! Strict Mode: " + (enable ? "ON" : "OFF"));

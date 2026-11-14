@@ -104,7 +104,30 @@ fun UploadScreen(
                 }
             }
 
-            Spacer(modifier = Modifier.height(32.dp))
+            Spacer(modifier = Modifier.height(12.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                OutlinedButton(
+                    onClick = { navController.navigate(AppDestinations.MONITOR_ROUTE) },
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Icon(Icons.Default.Phone, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text("Desktop Monitor")
+                }
+                OutlinedButton(
+                    onClick = { navController.navigate(AppDestinations.SETTINGS_ROUTE) },
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Icon(Icons.Default.Settings, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text("Settings")
+                }
+            }
+
+            Spacer(modifier = Modifier.height(20.dp))
 
             when (uiState) {
                 is UploadScreenState.Processing -> {

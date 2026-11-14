@@ -4,7 +4,6 @@ import com.example.automl_prototype_1.service.LogService;
 import com.example.automl_prototype_1.rl.agent.TabularQLearningAgent;
 
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 
@@ -14,10 +13,10 @@ import java.util.Map;
  */
 public class InsightExtractionService {
 
-    private final LocalLlmService llmService;
+    private final com.example.automl_prototype_1.service.OllamaService llmService;
 
     public InsightExtractionService() {
-        this.llmService = new LocalLlmService();
+        this.llmService = com.example.automl_prototype_1.service.OllamaService.getInstance();
     }
 
     /**

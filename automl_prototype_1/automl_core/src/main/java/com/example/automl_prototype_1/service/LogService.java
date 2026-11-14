@@ -75,6 +75,22 @@ public class LogService {
     }
 
     /**
+     * Logs an AI/Agentic decision or action.
+     * This is crucial for the "Antigravity Observer" to track the system's
+     * reasoning.
+     * 
+     * @param source  The Agent component (e.g., "ErrorMonitor", "Architect",
+     *                "Observer").
+     * @param action  The concise action taken (e.g., "Fixing Code", "Analyzing
+     *                Log").
+     * @param details detailed context or reasoning.
+     */
+    public void logAI(String source, String action, String details) {
+        String message = String.format("[AI_ACTION] %s: %s", action, details);
+        log(source, message);
+    }
+
+    /**
      * Logs a message with a specific source/context.
      * 
      * @param source  The component generating the log (e.g., "GA",
@@ -124,9 +140,9 @@ public class LogService {
 
         // Write to persistent execution.log
         StatusDumperService.getInstance().appendLog(entry);
-        // Force print to console for debugging visibility
-        // TEMP: Print everything - Removed for production quality
-        // System.out.println(entry);
+
+        // Force print to console for Antigravity/Developer visibility
+        System.out.println(entry);
     }
 
     /**

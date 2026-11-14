@@ -1,20 +1,20 @@
 package com.example.automl_prototype_1.registry;
 
 import com.example.automl_prototype_1.service.IClassifier;
-import com.example.automl_prototype_1.classifier.cpu.RandomForestClassifier;
-import com.example.automl_prototype_1.classifier.cpu.LogisticRegression;
-import com.example.automl_prototype_1.classifier.cpu.KnnClassifier;
-import com.example.automl_prototype_1.classifier.cpu.XGBoostClassifier;
-import com.example.automl_prototype_1.classifier.cpu.SvmClassifier;
-import com.example.automl_prototype_1.classifier.MlpClassifier;
-import com.example.automl_prototype_1.classifier.CnnClassifier;
-import com.example.automl_prototype_1.classifier.gpu.GpuKnnClassifier;
-import com.example.automl_prototype_1.classifier.gpu.GpuLogisticRegression;
-import com.example.automl_prototype_1.classifier.gpu.GpuRandomForestClassifier;
-import com.example.automl_prototype_1.classifier.gpu.GpuPythonSvmClassifier;
-import com.example.automl_prototype_1.classifier.gpu.GpuPythonXGBoostClassifier;
-import com.example.automl_prototype_1.classifier.gpu.GpuPythonCatBoostClassifier;
-import com.example.automl_prototype_1.classifier.gpu.GpuPythonLightGbmClassifier;
+import com.example.automl_prototype_1.classifier.ml.RandomForestClassifier;
+import com.example.automl_prototype_1.classifier.ml.LogisticRegression;
+import com.example.automl_prototype_1.classifier.ml.KnnClassifier;
+import com.example.automl_prototype_1.classifier.ml.XGBoostClassifier;
+import com.example.automl_prototype_1.classifier.ml.SvmClassifier;
+import com.example.automl_prototype_1.classifier.dl.MlpClassifier;
+import com.example.automl_prototype_1.classifier.cnn.CnnClassifier;
+import com.example.automl_prototype_1.classifier.ml.GpuKnnClassifier;
+import com.example.automl_prototype_1.classifier.ml.GpuLogisticRegression;
+import com.example.automl_prototype_1.classifier.ml.GpuRandomForestClassifier;
+import com.example.automl_prototype_1.classifier.ml.GpuPythonSvmClassifier;
+import com.example.automl_prototype_1.classifier.ml.GpuPythonXGBoostClassifier;
+import com.example.automl_prototype_1.classifier.ml.GpuPythonCatBoostClassifier;
+import com.example.automl_prototype_1.classifier.ml.GpuPythonLightGbmClassifier;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -46,6 +46,16 @@ public class ClassifierRegistry {
         if (name == null)
             return null;
 
+        // Dynamic Model Hub / Creator Lab registrations
+        try {
+            java.util.Map<String, String> dynamic = com.example.automl_prototype_1.service.AppStateService
+                    .getInstance().getDynamicModels();
+            if (dynamic != null && dynamic.containsKey(name)) {
+                return createDynamicClassifier(name, dynamic.get(name));
+            }
+        } catch (Exception ignored) {
+        }
+
         return switch (name) {
             // Standard CPU
             case "Random Forest" -> new RandomForestClassifier();
@@ -57,7 +67,7 @@ public class ClassifierRegistry {
             // Deep Learning
             case "Multilayer Perceptron (ANN)" -> new MlpClassifier();
             case "CNN (Deep Learning)" -> new CnnClassifier();
-            case "BERT (Gen AI Text)" -> new com.example.automl_prototype_1.classifier.BertClassifier();
+            case "BERT (Gen AI Text)" -> new com.example.automl_prototype_1.classifier.llm.BertClassifier();
 
             // GPU Wrappers (Aparapi / Smile-GPU-Stub / Native)
             case "GPU-KNN" -> new GpuKnnClassifier();
@@ -72,6 +82,7 @@ public class ClassifierRegistry {
             case "SVM (Python/GPU/RBF Bridge)" -> new GpuPythonSvmClassifier();
             case "CatBoost (Python/GPU Bridge)" -> new GpuPythonCatBoostClassifier();
             case "LightGBM (Python/GPU Bridge)" -> new GpuPythonLightGbmClassifier();
+            case "LSTM (Time Series)" -> new com.example.automl_prototype_1.classifier.dl.LstmClassifier();
 
             // Fallbacks for fuzzy matching (kept for backward compatibility with old
             // registry logic)
@@ -83,6 +94,35 @@ public class ClassifierRegistry {
                 yield null;
             }
         };
+    }
+
+    private IClassifier createDynamicClassifier(String displayName, String modelId) {
+        if (modelId == null || modelId.isBlank()) {
+            return null;
+        }
+        if (modelId.startsWith("CLASS:")) {
+            String className = modelId.substring("CLASS:".length()).trim();
+            try {
+                Class<?> clazz = Class.forName(
+                        "com.example.automl_prototype_1.rl.extensions." + className);
+                Object instance = clazz.getDeclaredConstructor().newInstance();
+                if (instance instanceof IClassifier classifier) {
+                    return classifier;
+                }
+            } catch (ClassNotFoundException notLoaded) {
+                // Compiled but not on the running classpath — use script bridge fallback.
+                return new com.example.automl_prototype_1.classifier.genai.CustomScriptClassifier(
+                        modelId, java.util.Map.of("class_name", className, "display_name", displayName));
+            } catch (Exception e) {
+                return new com.example.automl_prototype_1.classifier.genai.CustomScriptClassifier(
+                        modelId, java.util.Map.of("class_name", className, "display_name", displayName,
+                                "load_error", e.getMessage()));
+            }
+            return new com.example.automl_prototype_1.classifier.genai.CustomScriptClassifier(
+                    modelId, java.util.Map.of("class_name", className, "display_name", displayName));
+        }
+        // HuggingFace / Model Hub ids
+        return new com.example.automl_prototype_1.classifier.llm.GenericHuggingFaceClassifier(modelId, displayName);
     }
 
     /**
@@ -117,6 +157,23 @@ public class ClassifierRegistry {
             names.add("SVM (Python/GPU/RBF Bridge)");
             names.add("CatBoost (Python/GPU Bridge)");
             names.add("LightGBM (Python/GPU Bridge)");
+
+            // Deep Learning (Time Series)
+            names.add("LSTM (Time Series)");
+        }
+
+        // Model Hub / Creator Lab dynamic registrations
+        try {
+            java.util.Map<String, String> dynamic = com.example.automl_prototype_1.service.AppStateService
+                    .getInstance().getDynamicModels();
+            if (dynamic != null) {
+                for (String key : dynamic.keySet()) {
+                    if (!names.contains(key)) {
+                        names.add(key);
+                    }
+                }
+            }
+        } catch (Exception ignored) {
         }
 
         return Collections.unmodifiableList(names);

@@ -3,91 +3,106 @@
 <?import javafx.geometry.Insets?>
 <?import javafx.scene.control.Button?>
 <?import javafx.scene.control.Label?>
+<?import javafx.scene.control.ScrollPane?>
 <?import javafx.scene.layout.BorderPane?>
 <?import javafx.scene.layout.HBox?>
 <?import javafx.scene.layout.Region?>
 <?import javafx.scene.layout.StackPane?>
 <?import javafx.scene.layout.VBox?>
-<?import javafx.scene.text.Font?>
 
-<StackPane fx:controller="com.example.automl_prototype_1.controller.DashboardController"
-           xmlns:fx="http://javafx.com/fxml/1" prefWidth="1280" prefHeight="850"
+<StackPane fx:id="shellRoot" fx:controller="com.example.automl_prototype_1.controller.DashboardController"
+           xmlns:fx="http://javafx.com/fxml/1" prefWidth="1360" prefHeight="860"
            styleClass="root">
 
+    <!-- Atmospheric backdrop (animated in controller) -->
+    <Region fx:id="orbAmber" mouseTransparent="true" pickOnBounds="false"
+            prefWidth="420" prefHeight="420" maxWidth="420" maxHeight="420"
+            styleClass="ambient-orb"
+            style="-fx-background-color: radial-gradient(center 50% 50%, radius 70%, rgba(228,161,74,0.28), transparent);"/>
+    <Region fx:id="orbTeal" mouseTransparent="true" pickOnBounds="false"
+            prefWidth="380" prefHeight="380" maxWidth="380" maxHeight="380"
+            styleClass="ambient-orb"
+            style="-fx-background-color: radial-gradient(center 50% 50%, radius 70%, rgba(61,154,139,0.22), transparent);"/>
+
     <BorderPane>
+        <left>
+            <VBox fx:id="sidebarPane" prefWidth="252" styleClass="left-sidebar">
+                <HBox alignment="CENTER_LEFT" spacing="12" styleClass="sidebar-brand">
+                    <Label text="◈" styleClass="brand-mark"/>
+                    <VBox spacing="2">
+                        <Label text="AutoML Studio" styleClass="sidebar-title"/>
+                        <Label text="UNIFIED AI ATELIER" styleClass="sidebar-caption"/>
+                    </VBox>
+                </HBox>
 
-    <!-- LEFT: Modern Sidebar Navigation -->
-    <left>
-        <VBox spacing="10" prefWidth="260" styleClass="left-sidebar">
-            <padding><Insets top="30" right="20" bottom="30" left="20"/></padding>
-            
-            <!-- Logo / Brand Area -->
-            <HBox alignment="CENTER_LEFT" spacing="10">
-                <padding><Insets bottom="40"/></padding>
-                <Label text="AutoML" styleClass="sidebar-title"/>
-            </HBox>
+                <ScrollPane fitToWidth="true" hbarPolicy="NEVER" VBox.vgrow="ALWAYS" styleClass="sidebar-scroll">
+                    <content>
+                        <VBox spacing="3" styleClass="nav-list">
+                            <Label text="WORKSPACE" styleClass="nav-section-label"/>
+                            <Button fx:id="homeBtn" text="⌂  Overview" styleClass="nav-button" maxWidth="Infinity"/>
+                            <Button fx:id="uploadBtn" text="▣  Data &amp; Upload" styleClass="nav-button" maxWidth="Infinity"/>
+                            <Button fx:id="dataVizBtn" text="◫  Data Visualizer" styleClass="nav-button" maxWidth="Infinity"/>
 
-            <!-- Navigation Items -->
-            <Label text="MAIN MENU" styleClass="sub-header-label" style="-fx-font-size: 12px; -fx-text-fill: -color-text-secondary; -fx-padding: 0 0 10 10;"/>
-            
-            <Button fx:id="uploadBtn" text="Upload Dataset" styleClass="nav-button" maxWidth="Infinity"/>
-            <Button fx:id="algoBtn" text="Select Algorithm" styleClass="nav-button" maxWidth="Infinity"/>
-            <Button fx:id="settingsBtn" text="Settings" styleClass="nav-button" maxWidth="Infinity"/>
-            <Button fx:id="simulatorBtn" text="Pipeline Simulator" styleClass="nav-button" maxWidth="Infinity"/>
-            <Button fx:id="rlLabBtn" text="RL Lab" styleClass="nav-button" maxWidth="Infinity"/>
-            <Button fx:id="visualizerBtn" text="Visualizer (Sim)" styleClass="nav-button" maxWidth="Infinity"/>
-            <Button fx:id="creatorLabBtn" text="Creator Lab (AI Architect)" styleClass="nav-button" maxWidth="Infinity"/>
-            <Button fx:id="perfHistoryBtn" text="📊 Performance History" styleClass="nav-button" maxWidth="Infinity"/>
+                            <Label text="BUILD &amp; TRAIN" styleClass="nav-section-label"/>
+                            <Button fx:id="algoSelectBtn" text="◎  Algorithms" styleClass="nav-button" maxWidth="Infinity"/>
+                            <Button fx:id="simulatorBtn" text="⌘  Pipeline Designer" styleClass="nav-button" maxWidth="Infinity"/>
+                            <Button fx:id="mlBtn" text="ML  Machine Learning" styleClass="nav-button" maxWidth="Infinity"/>
+                            <Button fx:id="dlBtn" text="DL  Deep Learning" styleClass="nav-button" maxWidth="Infinity"/>
+                            <Button fx:id="cnnBtn" text="◉  Vision / CNN" styleClass="nav-button" maxWidth="Infinity"/>
+                            <Button fx:id="llmBtn" text="◇  LLM / SLM" styleClass="nav-button" maxWidth="Infinity"/>
+                            <Button fx:id="genAiBtn" text="✦  Generative AI" styleClass="nav-button" maxWidth="Infinity"/>
+                            <Button fx:id="rlLabBtn" text="RL  Reinforcement Lab" styleClass="nav-button" maxWidth="Infinity"/>
+                            <Button fx:id="visualizerBtn" text="◌  RL Visualizer" styleClass="nav-button" maxWidth="Infinity"/>
 
-            <Region prefHeight="30"/>
+                            <Label text="AGENTS &amp; DEPLOY" styleClass="nav-section-label"/>
+                            <Button fx:id="creatorLabBtn" text="⬡  Neural Forge" styleClass="nav-button" maxWidth="Infinity"/>
+                            <Button fx:id="architectLabBtn" text="⌬  Creator Lab" styleClass="nav-button" maxWidth="Infinity"/>
+                            <Button fx:id="modelHubBtn" text="▤  Model Hub" styleClass="nav-button" maxWidth="Infinity"/>
+                            <Button fx:id="agentDebugBtn" text="⚙  Agent Debug" styleClass="nav-button" maxWidth="Infinity"/>
 
-            <Label text="ACTIONS" styleClass="sub-header-label" style="-fx-font-size: 12px; -fx-text-fill: -color-text-secondary; -fx-padding: 0 0 10 10;"/>
-            <Button fx:id="runBtn" text="Run Experiment" styleClass="nav-button, button-accent" maxWidth="Infinity"/>
-            <Button fx:id="resultsBtn" text="View Results" styleClass="nav-button" maxWidth="Infinity"/>
-            
-            <Region VBox.vgrow="ALWAYS"/>
-            
-            <!-- Bottom Actions -->
-            <Button fx:id="exitBtn" text="Log Out" styleClass="nav-button" maxWidth="Infinity"/>
-        </VBox>
-    </left>
+                            <Label text="MONITOR" styleClass="nav-section-label"/>
+                            <Button fx:id="perfHistoryBtn" text="↗  Performance History" styleClass="nav-button" maxWidth="Infinity"/>
+                            <Button fx:id="resultsBtn" text="✓  Results &amp; Exports" styleClass="nav-button" maxWidth="Infinity"/>
+                            <Button fx:id="settingsBtn" text="⚙  Settings" styleClass="nav-button" maxWidth="Infinity"/>
+                        </VBox>
+                    </content>
+                </ScrollPane>
 
-    <!-- CENTER: Main Content Area with Header -->
-    <center>
-        <VBox spacing="0" styleClass="content-area">
-            <!-- Header Bar -->
-            <HBox alignment="CENTER_LEFT" spacing="20" style="-fx-padding: 20 30 10 30;">
-                <VBox>
-                    <Label text="Dashboard" styleClass="header-label"/>
-                    <Label text="Welcome back, User" styleClass="sub-header-label" style="-fx-font-weight: normal;"/>
-                    <Label fx:id="datasetLabel" text="No dataset selected" styleClass="sub-header-label" style="-fx-font-size: 12px; -fx-opacity: 0.8;"/>
+                <VBox spacing="8" styleClass="sidebar-actions">
+                    <Button fx:id="runBtn" text="▶  Run Experiment" styleClass="button-accent" maxWidth="Infinity"/>
+                    <HBox spacing="6">
+                        <Button fx:id="chatToggleBtn" text="AI Chat" HBox.hgrow="ALWAYS" maxWidth="Infinity"/>
+                        <Button fx:id="exitBtn" text="Exit"/>
+                    </HBox>
                 </VBox>
-                <Region HBox.hgrow="ALWAYS"/>
-                <!-- Live System Stats -->
-                <Label fx:id="systemStatsLabel" text="" styleClass="sub-header-label" style="-fx-font-size: 10px; -fx-text-fill: #888; -fx-padding: 5 10 5 0;"/>
-                <!-- Resource Status Indicator -->
-                <Label fx:id="resourceStatusLabel" text="Checking Resources..." styleClass="sub-header-label" style="-fx-font-size: 11px; -fx-padding: 5 10 5 10; -fx-background-radius: 4; -fx-background-color: #eee; -fx-text-fill: #555;"/>
-                <Button text="Help" styleClass="button"/>
-            </HBox>
+            </VBox>
+        </left>
 
-            <!-- Dynamic Content -->
-            <StackPane fx:id="mainContent" VBox.vgrow="ALWAYS">
-                <padding><Insets top="20" right="30" bottom="30" left="30"/></padding>
-            </StackPane>
-        </VBox>
-    </center>
+        <center>
+            <VBox spacing="0" styleClass="content-area">
+                <HBox alignment="CENTER_LEFT" spacing="14" styleClass="top-bar">
+                    <VBox spacing="2">
+                        <Label fx:id="viewTitleLabel" text="Overview" styleClass="page-title"/>
+                        <Label fx:id="datasetLabel" text="No dataset selected" styleClass="page-subtitle"/>
+                    </VBox>
+                    <Region HBox.hgrow="ALWAYS"/>
+                    <Label fx:id="resourceStatusLabel" text="Checking GPU…" styleClass="status-chip"/>
+                    <Label fx:id="remoteStatusLabel" text="Remote :8088" styleClass="status-chip"/>
+                    <Label fx:id="systemStatsLabel" text="" styleClass="system-stats"/>
+                    <Button fx:id="popOutBtn" text="Pop out" styleClass="compact-button"/>
+                    <Button fx:id="optimizeOsBtn" text="Optimize" styleClass="compact-button"/>
+                    <Button fx:id="helpBtn" text="?" styleClass="help-button"/>
+                </HBox>
 
+                <StackPane fx:id="mainContent" minWidth="720" VBox.vgrow="ALWAYS" styleClass="main-content">
+                    <padding><Insets top="12" right="22" bottom="22" left="22"/></padding>
+                </StackPane>
+            </VBox>
+        </center>
     </BorderPane>
 
-    <!-- Floating Chat Overlay -->
-    <VBox alignment="BOTTOM_RIGHT" pickOnBounds="false" spacing="10">
-        <padding><Insets bottom="20" right="20"/></padding>
-        
-        <!-- The Chat View Container -->
-        <StackPane fx:id="chatContainer" visible="false" alignment="BOTTOM_RIGHT"/>
-
-        <!-- Toggle Button -->
-        <Button fx:id="chatToggleBtn" text="💬 AI Chat" styleClass="button-accent" style="-fx-font-weight: bold; -fx-padding: 10 20; -fx-background-radius: 20; -fx-effect: dropshadow(three-pass-box, rgba(0,0,0,0.2), 5, 0, 0, 2);"/>
+    <VBox alignment="BOTTOM_RIGHT" pickOnBounds="false">
+        <padding><Insets bottom="78" right="24"/></padding>
+        <StackPane fx:id="chatContainer" visible="false" managed="false" alignment="BOTTOM_RIGHT"/>
     </VBox>
-
 </StackPane>

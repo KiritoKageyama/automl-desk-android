@@ -1,0 +1,117 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.geometry.Insets?>
+<?import javafx.scene.control.*?>
+<?import javafx.scene.layout.*?>
+<?import javafx.scene.text.Font?>
+
+<ScrollPane fitToWidth="true" fitToHeight="true" xmlns:fx="http://javafx.com/fxml/1"
+            fx:controller="com.example.automl_prototype_1.controller.MlWorkspaceController">
+    <content>
+        <VBox spacing="20" style="-fx-padding: 10;">
+            
+            <!-- HEADER -->
+            <HBox alignment="CENTER_LEFT" spacing="10">
+                <Label text="Machine Learning Workspace" style="-fx-font-size: 24px; -fx-font-weight: bold;"/>
+                <Label text="Tabular Data &amp; Standard Classifiers" style="-fx-font-size: 14px; -fx-text-fill: gray;"/>
+            </HBox>
+
+            <!-- 1. DATA UPLOAD SECTION -->
+            <VBox spacing="15" styleClass="card">
+                <padding><Insets top="20" right="30" bottom="20" left="30"/></padding>
+                <Label styleClass="header-label" text="1. Upload Tabular Dataset"/>
+                <HBox spacing="10" alignment="CENTER_LEFT">
+                    <Button fx:id="browseButton" text="Browse CSV..."/>
+                    <Button text="⚡ Generate Synthetic Data" onAction="#handleGenerateSynthetic" style="-fx-background-color: #2196F3; -fx-text-fill: white;"/>
+                    <Label fx:id="selectedFileLabel" text="No file selected." wrapText="true" HBox.hgrow="ALWAYS"/>
+                </HBox>
+                <Separator/>
+                <HBox spacing="15" alignment="CENTER_LEFT">
+                    <Label styleClass="sub-header-label" text="Target Column:"/>
+                    <ChoiceBox fx:id="targetColumnChoiceBox" prefWidth="250" disable="true"/>
+                    <Button text="Advanced Preprocessing..." onAction="#handleAdvancedSettings" style="-fx-background-color: #ddd; -fx-text-fill: #333;"/>
+                    <Button fx:id="analyzeButton" text="Analyze Dataset" disable="true" styleClass="button-accent"/>
+                </HBox>
+                <TextArea fx:id="analysisTextArea" editable="false" wrapText="true" prefHeight="100.0" promptText="Dataset analysis summary..."/>
+            </VBox>
+
+            <!-- 2. ALGORITHM SECTION -->
+            <GridPane hgap="20" vgap="20">
+                <columnConstraints>
+                    <ColumnConstraints hgrow="SOMETIMES" minWidth="10.0" prefWidth="500.0"/>
+                    <ColumnConstraints hgrow="ALWAYS"/>
+                </columnConstraints>
+            
+                <!-- Left: Metaheuristics & Base Models -->
+                <VBox spacing="15" styleClass="card" GridPane.columnIndex="0" GridPane.vgrow="ALWAYS">
+                    <padding><Insets top="20" right="30" bottom="20" left="30"/></padding>
+                    <Label styleClass="header-label" text="2. Algorithm Configuration"/>
+                    
+                    <Label styleClass="sub-header-label" text="Select Meta-Heuristics (Feature Selection)"/>
+                    <CheckBox fx:id="selectAllAlgorithms" text="Select All Algorithms" style="-fx-font-weight: bold;"/>
+                    <GridPane hgap="20" vgap="10">
+                        <columnConstraints>
+                            <ColumnConstraints hgrow="SOMETIMES" minWidth="10.0"/>
+                            <ColumnConstraints hgrow="SOMETIMES" minWidth="10.0"/>
+                        </columnConstraints>
+                        <children>
+                            <CheckBox fx:id="checkBPSO" text="BPSO" GridPane.rowIndex="0" GridPane.columnIndex="0"/>
+                            <CheckBox fx:id="checkWWO" text="WWO" GridPane.rowIndex="1" GridPane.columnIndex="0"/>
+                            <CheckBox fx:id="checkASO" text="ASO" GridPane.rowIndex="2" GridPane.columnIndex="0"/>
+                            <CheckBox fx:id="checkGA" text="Genetic Algorithm" GridPane.rowIndex="0" GridPane.columnIndex="1"/>
+                            <CheckBox fx:id="checkIGPSO" text="IGPSO" GridPane.rowIndex="1" GridPane.columnIndex="1"/>
+                            <CheckBox fx:id="checkPLS" text="Parallel Local Search" GridPane.rowIndex="2" GridPane.columnIndex="1"/>
+                            <CheckBox fx:id="checkSA" text="Simulated Annealing" GridPane.rowIndex="3" GridPane.columnIndex="0"/>
+                            <CheckBox fx:id="checkGWO" text="Grey Wolf Optimizer" GridPane.rowIndex="3" GridPane.columnIndex="1"/>
+                            <CheckBox fx:id="checkDE" text="Differential Evolution" GridPane.rowIndex="4" GridPane.columnIndex="0"/>
+                        </children>
+                    </GridPane>
+                    
+                    <Separator prefHeight="20.0"/>
+                    <Label styleClass="sub-header-label" text="Base ML Classifier"/>
+                    <ChoiceBox fx:id="baseModelChoiceBox" maxWidth="Infinity"/>
+                </VBox>
+            
+                <!-- Right: Advanced Options -->
+                <VBox spacing="15" GridPane.columnIndex="1" GridPane.vgrow="ALWAYS">
+                    <VBox spacing="15" styleClass="card">
+                        <padding><Insets top="20" right="30" bottom="20" left="30"/></padding>
+                        <Label styleClass="header-label" text="3. Execution Settings"/>
+
+                        <HBox spacing="10" alignment="CENTER_LEFT">
+                            <Label styleClass="sub-header-label" text="Cross-Validation Folds:"/>
+                            <TextField fx:id="kFoldsTextField" promptText="e.g., 5" prefWidth="60"/>
+                        </HBox>
+                        <CheckBox fx:id="enableTuningCheckBox" text="Enable Hyperparameter Tuning"/>
+                        <CheckBox fx:id="chkBalancedOpt" text="Optimize for Balanced Accuracy"/>
+                        <CheckBox fx:id="enableLoggingCheckBox" text="Enable Detailed Logging"/>
+                
+                        <Separator prefHeight="10.0"/>
+                        <Label styleClass="sub-header-label" text="Hardware Acceleration"/>
+                        <VBox spacing="8">
+                             <CheckBox fx:id="chkUseGpu" text="Use GPU Acceleration (if available)"/>
+                             <ComboBox fx:id="cmbGpuSelector" promptText="Select GPU Device" prefWidth="300.0" visible="false" managed="false"/>
+                             <CheckBox fx:id="chkUseWsl" text="Enable WSL 2 (For XGBoost/RAPIDS)"/>
+                        </VBox>
+                    </VBox>
+                </VBox>
+            </GridPane>
+
+            <!-- ADVICE & SCAN SECTION -->
+            <VBox spacing="15" styleClass="card" VBox.vgrow="ALWAYS" alignment="TOP_CENTER">
+                <padding><Insets top="20" right="30" bottom="20" left="30"/></padding>
+                <Label styleClass="header-label" text="ML Advisor &amp; Benchmarks"/>
+                <HBox spacing="10" alignment="CENTER">
+                    <Button fx:id="recommendButton" text="Get Architecture Advice" styleClass="button-accent"/>
+                    <Button fx:id="quickScanBtn" text="⚡ Quick Scan (Data Subsample)" style="-fx-background-color: #059669; -fx-text-fill: white; -fx-font-weight: bold;"/>
+                </HBox>
+                <HBox spacing="15">
+                    <TextArea fx:id="adviceTextArea" editable="false" wrapText="true" HBox.hgrow="ALWAYS"
+                            prefHeight="120.0" promptText="Advisor recommendations will appear here..."/>
+                    <TextArea fx:id="quickScanResultArea" editable="false" wrapText="true" HBox.hgrow="ALWAYS"
+                            prefHeight="120.0" promptText="Quick benchmark scan results will appear here..."/>
+                </HBox>
+            </VBox>
+        </VBox>
+    </content>
+</ScrollPane>

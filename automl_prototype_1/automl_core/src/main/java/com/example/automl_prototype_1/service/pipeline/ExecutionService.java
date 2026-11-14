@@ -2,26 +2,16 @@ package com.example.automl_prototype_1.service.pipeline;
 
 import com.example.automl_prototype_1.service.LogService;
 import com.example.automl_prototype_1.service.AppStateService;
+import com.example.automl_prototype_1.service.CrashReportService;
 import com.example.automl_prototype_1.service.IClassifier;
 
-import com.example.automl_prototype_1.algorithm.AblationAwareGeneticAlgorithm;
-import com.example.automl_prototype_1.algorithm.AtomSearchOptimization;
-import com.example.automl_prototype_1.algorithm.BinaryParticleSwarmOptimization;
-import com.example.automl_prototype_1.algorithm.DifferentialEvolution;
-import com.example.automl_prototype_1.algorithm.GeneticAlgorithm;
-import com.example.automl_prototype_1.algorithm.GreyWolfOptimizer;
-import com.example.automl_prototype_1.algorithm.IGPSO;
 import com.example.automl_prototype_1.algorithm.OptimizationAlgorithm;
-import com.example.automl_prototype_1.algorithm.NoOptimizationAlgorithm;
-import com.example.automl_prototype_1.algorithm.ParallelLocalSearchAlgorithm;
-import com.example.automl_prototype_1.algorithm.SimulatedAnnealing;
-import com.example.automl_prototype_1.algorithm.WaterWaveOptimization;
 import com.example.automl_prototype_1.model.AlgorithmRecommendation;
 import com.example.automl_prototype_1.model.Dataset;
 import com.example.automl_prototype_1.model.ExecutionResult;
-import com.example.automl_prototype_1.classifier.cpu.KnnClassifier;
-// GpuKnnClassifier and GpuLogisticRegression are used FQCN in code, so imports removed.
-// Services in same package (com.example.automl_prototype_1.service) do not need imports.
+import com.example.automl_prototype_1.registry.AlgorithmRegistry;
+import com.example.automl_prototype_1.classifier.ml.KnnClassifier;
+import com.example.automl_prototype_1.service.progress.ProgressTrackingService;
 
 import com.example.automl_prototype_1.gpu.PythonExecutionService;
 import com.example.automl_prototype_1.gpu.HardwareAcceleratorService;
@@ -41,12 +31,14 @@ public class ExecutionService { // Forced IDE Re-index
 
     private static ExecutionService instance;
 
-    /**
-     * Constructor initializes the new services.
-     */
+    private final java.util.concurrent.ExecutorService executor;
+
     public ExecutionService() {
         this.recommendationService = new RecommendationService();
-        LogService.info("CORE", "ExecutionService Initialized.");
+        // Persistent ThreadPool with dynamic sizing
+        int cores = Runtime.getRuntime().availableProcessors();
+        this.executor = java.util.concurrent.Executors.newFixedThreadPool(Math.max(2, cores));
+        LogService.info("CORE", "ExecutionService Initialized with " + Math.max(2, cores) + " threads.");
     }
 
     public static synchronized ExecutionService getInstance() {
@@ -57,25 +49,17 @@ public class ExecutionService { // Forced IDE Re-index
     }
 
     /**
-     * Executes the selected optimization algorithms SYNCHRONOUSLY.
-     * This method is kept for compatibility with existing UI controllers.
-     * It now requires a pre-selected classifier to be passed in the configuration.
-     *
-     * @param dataset                The loaded Dataset object.
-     * @param selectedAlgorithmNames List of names of algorithms to run.
-     * @param configuration          Must contain an IClassifier instance under the
-     *                               key "classifier".
-     * @return A List containing ExecutionResult objects.
+     * Stops the current execution. The thread pool is kept alive for reuse;
+     * only Python processes are forcefully terminated.
      */
-    private java.util.concurrent.ExecutorService executor;
-
     public void stop() {
-        LogService.info("CORE", "STOP Requested. Terminating processes...");
+        LogService.info("CORE", "STOP Requested. Clearing tasks...");
         if (executor != null && !executor.isShutdown()) {
-            executor.shutdownNow();
+            LogService.warn("CORE",
+                    "Stop requested. Active threads may continue unless they check interruption.");
         }
         PythonExecutionService.getInstance().terminateAll();
-        LogService.error("CORE", "=== EXECUTION FORCEFULLY STOPPED BY USER ===");
+        LogService.error("CORE", "=== EXECUTION FORCEFULLY STOPPED BY USER (Python Terminated) ===");
     }
 
     public List<ExecutionResult> executeAlgorithms(Dataset dataset,
@@ -134,16 +118,16 @@ public class ExecutionService { // Forced IDE Re-index
 
         // --- Phase 3: Image Classification Support ---
         if (dataset.getDataType() == Dataset.DataType.IMAGE
-                && classifier instanceof com.example.automl_prototype_1.classifier.CnnClassifier) {
-            ((com.example.automl_prototype_1.classifier.CnnClassifier) classifier)
+                && classifier instanceof com.example.automl_prototype_1.classifier.cnn.CnnClassifier) {
+            ((com.example.automl_prototype_1.classifier.cnn.CnnClassifier) classifier)
                     .setImagePaths(dataset.getFilePaths());
             LogService.info("CORE", "Injected " + dataset.getFilePaths().size() + " image paths into CnnClassifier.");
         }
 
         // --- Phase 7: Gen AI Text Support ---
         if (dataset.getDataType() == Dataset.DataType.TEXT
-                && classifier instanceof com.example.automl_prototype_1.classifier.BertClassifier) {
-            ((com.example.automl_prototype_1.classifier.BertClassifier) classifier)
+                && classifier instanceof com.example.automl_prototype_1.classifier.llm.BertClassifier) {
+            ((com.example.automl_prototype_1.classifier.llm.BertClassifier) classifier)
                     .setFilePaths(dataset.getFilePaths());
             LogService.info("CORE", "Injected " + (dataset.getFilePaths() != null ? dataset.getFilePaths().size() : 0)
                     + " text paths into BertClassifier.");
@@ -152,22 +136,19 @@ public class ExecutionService { // Forced IDE Re-index
         LogService.info("CORE", "Starting PARALLEL execution of " + finalAlgorithms.size()
                 + " algorithms with classifier: " + classifier.getName());
 
-        // Create a Thread Pool for parallel execution of algorithms
-        this.executor = java.util.concurrent.Executors.newCachedThreadPool();
+        // Use Persistent Executor
         List<java.util.concurrent.Future<ExecutionResult>> futures = new ArrayList<>();
-        // final IClassifier finalClassifier = classifier; // Unused
         final Map<String, Object> finalConfig = configuration;
 
         for (String algoName : finalAlgorithms) {
             futures.add(executor.submit(() -> {
                 if (Thread.currentThread().isInterrupted())
                     return null;
-                // long threadId = Thread.currentThread().getId();
                 long threadId = Thread.currentThread().getId();
                 String resourceType = (finalConfig
-                        .get("classifier") instanceof com.example.automl_prototype_1.classifier.gpu.GpuKnnClassifier ||
+                        .get("classifier") instanceof com.example.automl_prototype_1.classifier.ml.GpuKnnClassifier ||
                         finalConfig.get(
-                                "classifier") instanceof com.example.automl_prototype_1.classifier.gpu.GpuLogisticRegression)
+                                "classifier") instanceof com.example.automl_prototype_1.classifier.ml.GpuLogisticRegression)
                                         ? "GPU"
                                         : "CPU";
                 LogService.info("CORE", "[Thread " + threadId + "] Running " + algoName + " on " + resourceType);
@@ -181,13 +162,14 @@ public class ExecutionService { // Forced IDE Re-index
                         return result;
                     } catch (Exception e) {
                         LogService.error("CORE", "Error executing " + algoName + ": " + e.getMessage());
+                        CrashReportService.getInstance().report("ExecutionService:" + algoName, e);
                         // Self-Correction Loop: log failure
                         com.example.automl_prototype_1.service.agentic.SelfCorrectionLoopService.getInstance()
                                 .onExecutionComplete(algoName, false, e.getClass().getSimpleName(), 0.0);
-                        return new ExecutionResult(algoName + " (Failed)", 0, 0, 0, 0L);
+                        return ExecutionResult.failed(algoName, e.getMessage());
                     }
                 } else {
-                    return new ExecutionResult(algoName + " (Not Found)", 0, 0, 0, 0L);
+                    return ExecutionResult.failed(algoName, "Algorithm implementation not found");
                 }
             }));
         }
@@ -195,8 +177,7 @@ public class ExecutionService { // Forced IDE Re-index
         List<ExecutionResult> allResults = new ArrayList<>();
         for (java.util.concurrent.Future<ExecutionResult> future : futures) {
             try {
-                // Global safety timeout: 3 hours per algorithm (generous, but prevents eternal
-                // dev hangs)
+                // Global safety timeout: 3 hours per algorithm
                 ExecutionResult res = future.get(3, java.util.concurrent.TimeUnit.HOURS);
                 if (res != null)
                     allResults.add(res);
@@ -210,7 +191,8 @@ public class ExecutionService { // Forced IDE Re-index
             }
         }
 
-        executor.shutdown();
+        // Do NOT shutdown the persistent executor
+        // executor.shutdown();
         return allResults;
     }
 
@@ -261,42 +243,164 @@ public class ExecutionService { // Forced IDE Re-index
     }
 
     private OptimizationAlgorithm getAlgorithmImplementation(String name) {
-        if (name == null)
-            return null;
-        // FIX: Handle aliases for GA and SA
-        if ("Genetic Algorithm".equalsIgnoreCase(name) || "GA".equalsIgnoreCase(name))
-            return new GeneticAlgorithm();
-        if ("IGPSO".equalsIgnoreCase(name))
-            return new IGPSO();
-        if ("WWO".equalsIgnoreCase(name))
-            return new WaterWaveOptimization();
-        if ("BPSO".equalsIgnoreCase(name))
-            return new BinaryParticleSwarmOptimization();
-        if ("ASO".equalsIgnoreCase(name))
-            return new AtomSearchOptimization();
-        if ("PLS".equalsIgnoreCase(name) || "NNP".equalsIgnoreCase(name)) // Changed NNP to PLS and kept NNP as alias
-            return new ParallelLocalSearchAlgorithm();
-        if ("simulated annealing".equalsIgnoreCase(name) || "SA".equalsIgnoreCase(name))
-            return new SimulatedAnnealing();
-        if ("GWO".equalsIgnoreCase(name) || "Grey Wolf Optimizer".equalsIgnoreCase(name))
-            return new GreyWolfOptimizer();
-        if ("DE".equalsIgnoreCase(name) || "Differential Evolution".equalsIgnoreCase(name))
-            return new DifferentialEvolution();
-        if ("Ablation GA".equalsIgnoreCase(name))
-            return new AblationAwareGeneticAlgorithm(50, 100);
-        if (name.contains("No Optimization") || name.contains("Full Feature Set"))
-            return new NoOptimizationAlgorithm();
-        if ("Manual Selection".equalsIgnoreCase(name))
-            return new com.example.automl_prototype_1.algorithm.ManualSelectionAlgorithm();
+        OptimizationAlgorithm algo = com.example.automl_prototype_1.registry.AlgorithmRegistry.getInstance()
+                .getAlgorithm(name);
+        if (algo == null && name != null) {
+            LogService.error("ExecutionService", "No implementation found for algorithm name '" + name + "'");
+        }
+        return algo;
+    }
 
-        LogService.error("ExecutionService", "No implementation found for algorithm name '" + name + "'");
-        return null;
+    // -----------------------------------------------------------------------
+    // Sequential Pipeline — used by DashboardController's UI task
+    // -----------------------------------------------------------------------
+
+    /**
+     * Callback interface for reporting progress from the sequential pipeline.
+     * The controller implements this to update UI (e.g., JavaFX
+     * Task.updateMessage).
+     */
+    @FunctionalInterface
+    public interface ProgressCallback {
+        void update(String message);
     }
 
     /**
-     * Retrains the best model on the FULL dataset using the selected features and
-     * global settings.
-     * This step is crucial for generating a deployable model (ONNX).
+     * Executes the full sequential pipeline: preprocess → GPU warmup → run
+     * algorithms → refit.
+     * Matches the DashboardController's execution flow but lives in core so it can
+     * be reused.
+     *
+     * @param dataset     The preprocessed dataset (IDs already removed, scaling
+     *                    deferred to CV).
+     * @param algorithms  Ordered list of algorithm names to run.
+     * @param classifier  The classifier to use.
+     * @param isTuning    Whether to run hyperparameter tuning.
+     * @param cancelCheck Returns true when the caller wants to abort.
+     * @param progress    Optional callback for UI status messages.
+     * @return Ordered list of results (one per algorithm).
+     */
+    public List<ExecutionResult> runSequentialPipeline(
+            Dataset dataset,
+            List<String> algorithms,
+            IClassifier classifier,
+            boolean isTuning,
+            java.util.function.BooleanSupplier cancelCheck,
+            ProgressCallback progress) {
+
+        if (progress == null)
+            progress = msg -> {
+            };
+
+        // 1. GPU warmup (if needed)
+        if (classifier.getName().contains("GPU") || classifier.getName().contains("Python")) {
+            progress.update("Starting GPU Server...");
+            PythonExecutionService.getInstance().startGpuServer();
+            if (!PythonExecutionService.getInstance().isServerRunning()) {
+                throw new RuntimeException("GPU Server failed to start. Check logs.");
+            }
+        }
+
+        // 2. Calculate tuning trials dynamically
+        int tuningTrials = calculateTrials(dataset);
+
+        // 3. Sequential execution with progress tracking
+        HyperparameterTuningService tuningService = new HyperparameterTuningService();
+        ProgressTrackingService progressService = ProgressTrackingService.getInstance();
+        progressService.reset(algorithms);
+
+        List<ExecutionResult> results = new ArrayList<>();
+        int total = algorithms.size();
+
+        // Phase 10: Knowledge Graph live glow — activate pipeline stages as they run
+        com.example.automl_prototype_1.service.agentic.KnowledgeBaseService kb = com.example.automl_prototype_1.service.agentic.KnowledgeBaseService
+                .getInstance();
+        com.example.automl_prototype_1.service.agentic.TrainingWatchdogService watchdog = com.example.automl_prototype_1.service.agentic.TrainingWatchdogService
+                .getInstance();
+
+        // Activate Sensor+Preprocessing nodes at start of pipeline
+        kb.activateNode("Sensor Layer");
+        kb.activateNode("Preprocessing");
+        progress.update("Preprocessing dataset...");
+
+        for (int i = 0; i < total; i++) {
+            if (cancelCheck.getAsBoolean())
+                break;
+
+            String algoName = algorithms.get(i);
+            OptimizationAlgorithm algorithm = AlgorithmRegistry.getInstance().getAlgorithm(algoName);
+
+            // Phase 9.2: Start watchdog for this algorithm
+            watchdog.beginWatch(algoName);
+
+            // Phase 10: Activate Feature Selection node
+            kb.activateNode("Feature Selection");
+
+            // Apply manual iteration override
+            Integer iterOverride = AppStateService.getInstance().getManualIterationsOverride();
+            if (algorithm != null && iterOverride != null && iterOverride > 0) {
+                algorithm.setMaxIterations(iterOverride);
+                LogService.info("CORE", "Manual iterations for " + algoName + ": " + iterOverride);
+            }
+
+            if (isTuning) {
+                progress.update("Tuning " + algoName + " (" + (i + 1) + "/" + total + ")");
+                kb.activateNode("Model Training");
+                watchdog.heartbeat();
+                ExecutionResult best = tuningService.tune(algoName, tuningTrials, dataset, classifier);
+                if (best != null)
+                    results.add(best);
+            } else {
+                progress.update("Running " + algoName + " (" + (i + 1) + "/" + total + ")");
+                kb.activateNode("Model Training");
+                if (algorithm != null) {
+                    watchdog.heartbeat(); // signal progress before long run
+                    results.add(algorithm.execute(dataset, Map.of("classifier", classifier)));
+                }
+            }
+
+            // Phase 9.2: Job done — stop watchdog timer
+            watchdog.endWatch();
+        }
+
+        // 4. Refit best model for export
+        if (!results.isEmpty() && !cancelCheck.getAsBoolean()) {
+            progress.update("Refitting Best Model for Export...");
+            kb.activateNode("ONNX Export");
+            kb.activateNode("Action Layer");
+            kb.activateNode("Meta-Cognition");
+            ExecutionResult best = results.stream()
+                    .max(java.util.Comparator.comparingDouble(ExecutionResult::getAccuracy))
+                    .orElse(results.get(0));
+            try {
+                refitBestModel(best, classifier, dataset);
+            } catch (Exception e) {
+                LogService.error("CORE", "Refit Failed: " + e.getMessage());
+            }
+        }
+
+        return results;
+    }
+
+    /**
+     * Calculates dynamic tuning trial count based on dataset size.
+     */
+    private int calculateTrials(Dataset dataset) {
+        Integer manual = AppStateService.getInstance().getManualTrialsOverride();
+        if (manual != null && manual > 0)
+            return manual;
+
+        long rows = dataset.getRecordCount();
+        if (rows < 1000)
+            return 3;
+        if (rows < 10000)
+            return 6;
+        return 9;
+    }
+
+    /**
+     * Retrains the best model on the FULL dataset using the selected features.
+     * Crucial for generating a deployable model (ONNX).
      */
     public void refitBestModel(ExecutionResult result, IClassifier classifier, Dataset dataset) {
         if (result.getFeatureIndices() == null) {
@@ -309,112 +413,120 @@ public class ExecutionService { // Forced IDE Re-index
         // 1. Prepare Global Config (Enable Scaling/Imputation for Final Model)
         com.example.automl_prototype_1.model.PreprocessingConfig config = AppStateService.getInstance()
                 .getPreprocessingConfig();
-        // Force scaling/imputation to be active as per global settings
-        // Dashboard disabled them for CV, but here we want them.
 
         // 2. Run Preprocessing (Clean, Impute, Scale)
-        com.example.automl_prototype_1.service.pipeline.PreprocessorService preprocessor = new com.example.automl_prototype_1.service.pipeline.PreprocessorService();
+        PreprocessorService preprocessor = new PreprocessorService();
         String targetCol = dataset.getTargetColumnName();
         Dataset cleanData = preprocessor.runPreprocessingPipeline(dataset, targetCol, config);
 
         // 3. Filter Features
         double[][] X = cleanData.getFeatures();
-        int[] y = cleanData.getLabelVector(); // Assuming labels are preserved
+        int[] y = cleanData.getLabelVector();
         if (y == null) {
             LogService.error("CORE", "Cannot refit: No labels found in processed dataset.");
             return;
         }
 
         int[] indices = result.getFeatureIndices();
-        // Validate indices
         int maxIndex = 0;
         for (int idx : indices)
             maxIndex = Math.max(maxIndex, idx);
 
         if (maxIndex >= X[0].length) {
             LogService.error("CORE", "Feature Indices out of bounds. Max: " + maxIndex + ", Cols: " + X[0].length);
-            // Verify if preprocessing removed columns (e.g. ID removal)
-            // Indices come from Algorithm which used Preprocessed folds?
-            // AbstractFeatureSelectionAlgorithm used Folds created from RAW data.
-            // Wait. createStratifiedFolds creates folds from provided features.
-            // Optimize calls 'dataset.getFeatureMatrix(TARGET)'.
-            // Does 'runPreprocessingPipeline' modify column counts (e.g. remove ID)?
-            // YES. 'autoRemoveIdColumns'.
-            // So if Validation used logic that skipped ID columns...
-            // AbstractFeatureSelectionAlgorithm receives 'dataset'.
-            // In 'executeAlgorithms', dataset is PASSED IN.
-            // In DashboardController, 'finalDataset' is passed to 'executeAlgorithms'.
-            // 'finalDataset' is the result of 'runPreprocessingPipeline(safeConfig)'.
-            // 'safeConfig' has 'autoRemoveIdColumns(true)' (inherited from config).
-            // So 'finalDataset' HAS NO IDs.
-            // 'indices' are based on 'finalDataset'.
-            // HERE in 'refitBestModel', we act on 'dataset' (the ORIGINAL raw one passed
-            // from Dashboard?).
-            // NO. `refitBestModel` receives `dataset`.
-            // If Dashboard passes the SAME `finalDataset` (already preprocessed safely),
-            // then we shouldn't run preprocessor again on it?
-            // OR Dashboard passes `rawDataset`?
-
-            // If Dashboard passes `finalDataset` (No IDs, Raw Values, NaN preserved),
-            // Then we just need to Apply Impute/Scale.
-            // We should NOT run 'autoRemoveIdColumns' again if they are already gone.
-            // BUT `runPreprocessingPipeline` might fail if IDs are missing? No.
-
-            // Safer Check: If `DashboardController` calls this with the `finalDataset` used
-            // for CV,
-            // Then we are good on column alignment.
-            // But we need to Apply Impute/Scale.
-
-            // Modification: `runPreprocessingPipeline` applies ALL steps in config.
-            // If we pass `finalDataset` (which has ID removed), and Config says
-            // `removeID=true`,
-            // Preprocessor checks heuristic. If no ID found, it does nothing. Safe.
-
-            // The main issue: Impute/Scale.
-            // `cleanData` will be Imputed & Scaled.
+            // Indices may be misaligned if preprocessing changed column count.
+            // Proceeding with bounds-safe fallback below.
         }
 
         double[][] selectedX = new double[X.length][indices.length];
-
         for (int i = 0; i < X.length; i++) {
             for (int k = 0; k < indices.length; k++) {
                 int colIdx = indices[k];
-                if (colIdx < X[0].length) {
-                    selectedX[i][k] = X[i][colIdx];
-                } else {
-                    selectedX[i][k] = 0.0; // Fallback
-                }
+                selectedX[i][k] = (colIdx < X[0].length) ? X[i][colIdx] : 0.0;
             }
         }
 
-        // 4b. Inject Image Paths if applicable (Phase 6)
+        // Inject Image Paths if applicable
         if (dataset.getDataType() == Dataset.DataType.IMAGE
-                && classifier instanceof com.example.automl_prototype_1.classifier.CnnClassifier) {
-            ((com.example.automl_prototype_1.classifier.CnnClassifier) classifier)
+                && classifier instanceof com.example.automl_prototype_1.classifier.cnn.CnnClassifier) {
+            ((com.example.automl_prototype_1.classifier.cnn.CnnClassifier) classifier)
                     .setImagePaths(dataset.getFilePaths());
             LogService.info("CORE",
                     "Refit: Injected " + dataset.getFilePaths().size() + " image paths into CnnClassifier.");
         }
 
-        // 4. Train Classifier
+        // 4. Train Classifier on full data
         LogService.info("CORE", "Training " + classifier.getName() + " on " + X.length + " samples...");
         classifier.train(selectedX, y);
-
-        // Save reference for Export
         result.setTrainedClassifier(classifier);
 
-        // 5. Extract ONNX Path
-        if (classifier instanceof com.example.automl_prototype_1.classifier.gpu.GpuRandomForestClassifier) {
-            String path = ((com.example.automl_prototype_1.classifier.gpu.GpuRandomForestClassifier) classifier)
-                    .getOnnxModelPath();
-            if (path != null) {
-                result.setOnnxModelPath(path);
-                LogService.info("CORE", "ONNX Model Exported: " + path);
-            }
-        } else {
-            // Future support for other GPU classifiers
-            // if (classifier instanceof
-            // com.example.automl_prototype_1.classifier.gpu.GpuSvmClassifier) ...
+        // 5. Extract / produce ONNX path for any supported hybrid/Python classifier
+        String path = resolveOnnxModelPath(classifier);
+        if (path == null) {
+            path = tryExportOnnx(classifier);
         }
+        if (path != null) {
+            result.setOnnxModelPath(path);
+            try {
+                OnnxInferenceService.getInstance().loadModel(path, path);
+            } catch (Exception e) {
+                LogService.warn("CORE", "ONNX preload failed (path kept for export): " + e.getMessage());
+            }
+            LogService.info("CORE", "ONNX Model Exported: " + path);
+        } else {
+            LogService.warn("CORE", "No ONNX artifact available for classifier: " + classifier.getName());
+        }
+    }
+
+    /**
+     * Reads onnx path from hybrid GPU/Python classifiers after training.
+     */
+    private String resolveOnnxModelPath(IClassifier classifier) {
+        if (classifier instanceof com.example.automl_prototype_1.classifier.ml.GpuRandomForestClassifier) {
+            return ((com.example.automl_prototype_1.classifier.ml.GpuRandomForestClassifier) classifier)
+                    .getOnnxModelPath();
+        }
+        if (classifier instanceof com.example.automl_prototype_1.classifier.ml.GpuPythonXGBoostClassifier) {
+            return ((com.example.automl_prototype_1.classifier.ml.GpuPythonXGBoostClassifier) classifier)
+                    .getOnnxModelPath();
+        }
+        if (classifier instanceof com.example.automl_prototype_1.classifier.ml.GpuPythonLightGbmClassifier) {
+            return ((com.example.automl_prototype_1.classifier.ml.GpuPythonLightGbmClassifier) classifier)
+                    .getOnnxModelPath();
+        }
+        if (classifier instanceof com.example.automl_prototype_1.classifier.ml.GpuPythonSvmClassifier) {
+            return ((com.example.automl_prototype_1.classifier.ml.GpuPythonSvmClassifier) classifier)
+                    .getOnnxModelPath();
+        }
+        if (classifier instanceof com.example.automl_prototype_1.classifier.ml.GpuPythonCatBoostClassifier) {
+            return ((com.example.automl_prototype_1.classifier.ml.GpuPythonCatBoostClassifier) classifier)
+                    .getOnnxModelPath();
+        }
+        return null;
+    }
+
+    /**
+     * Fallback: ask Python bridge / OnnxExportService to materialize an .onnx file.
+     */
+    private String tryExportOnnx(IClassifier classifier) {
+        try {
+            java.io.File dest = java.io.File.createTempFile("automl_export_", ".onnx");
+            dest.deleteOnExit();
+            boolean ok = new com.example.automl_prototype_1.service.agentic.inference.OnnxExportService()
+                    .exportModel(classifier, dest.getAbsolutePath());
+            if (ok && dest.exists() && dest.length() > 0
+                    && dest.getName().endsWith(".onnx")
+                    && !dest.getAbsolutePath().contains(".fallback.ser")) {
+                return dest.getAbsolutePath();
+            }
+            // Export may have written a .fallback.ser next to destination
+            java.io.File ser = new java.io.File(dest.getAbsolutePath() + ".fallback.ser");
+            if (ser.exists()) {
+                LogService.info("CORE", "ONNX unsupported; Java serialization fallback at: " + ser.getAbsolutePath());
+            }
+        } catch (Exception e) {
+            LogService.warn("CORE", "ONNX export fallback failed: " + e.getMessage());
+        }
+        return null;
     }
 }

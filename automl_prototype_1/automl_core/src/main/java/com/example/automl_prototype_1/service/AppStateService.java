@@ -10,21 +10,9 @@ public class AppStateService {
 
     private static AppStateService instance;
 
-    private File selectedDatasetFile;
-    private List<String> datasetHeaders;
-    private String targetColumnName;
-    private List<String> selectedAlgorithmNames;
-    private String selectedBaseModelName;
-    private IClassifier selectedClassifier;
-    private String scalingStrategy = "Standardization";
-    private int kFolds = 5;
-    private boolean isTuningEnabled = false;
-    private boolean enableStandardization = true; // Default ON
-    private boolean enableBalancedOptimization = true; // Default ON
-    private List<ExecutionResult> executionResults; // RESTORED
-    private com.example.automl_prototype_1.model.PreprocessingConfig preprocessingConfig = new com.example.automl_prototype_1.model.PreprocessingConfig(); // Default
-                                                                                                                                                           // config
-    private Dataset currentDataset; // For synthetic or in-memory datasets
+    private java.util.Map<com.example.automl_prototype_1.model.Domain, com.example.automl_prototype_1.model.DomainState> domainStates = new java.util.EnumMap<>(
+            com.example.automl_prototype_1.model.Domain.class);
+    private com.example.automl_prototype_1.model.Domain currentDomain = com.example.automl_prototype_1.model.Domain.ML;
 
     // --- Phase 2: UI Expansion Enums ---
     public enum DataType {
@@ -47,7 +35,67 @@ public class AppStateService {
     private boolean enableQualityCheck = false; // Default disabled as requested
     private TrainingMode selectedTrainingMode = TrainingMode.ML_ALGORITHMS;
 
+    // Phase 13: Modular Visibility
+    private boolean showMl = true;
+    private boolean showDl = true;
+    private boolean showCnn = true;
+    private boolean showLlm = true;
+    private boolean showGenAi = true;
+    private boolean showRl = true;
+
+    // Getters and Setters for Visibility
+    public boolean isShowMl() {
+        return showMl;
+    }
+
+    public void setShowMl(boolean show) {
+        this.showMl = show;
+    }
+
+    public boolean isShowDl() {
+        return showDl;
+    }
+
+    public void setShowDl(boolean show) {
+        this.showDl = show;
+    }
+
+    public boolean isShowCnn() {
+        return showCnn;
+    }
+
+    public void setShowCnn(boolean show) {
+        this.showCnn = show;
+    }
+
+    public boolean isShowLlm() {
+        return showLlm;
+    }
+
+    public void setShowLlm(boolean show) {
+        this.showLlm = show;
+    }
+
+    public boolean isShowGenAi() {
+        return showGenAi;
+    }
+
+    public void setShowGenAi(boolean show) {
+        this.showGenAi = show;
+    }
+
+    public boolean isShowRl() {
+        return showRl;
+    }
+
+    public void setShowRl(boolean show) {
+        this.showRl = show;
+    }
+
     private AppStateService() {
+        for (com.example.automl_prototype_1.model.Domain d : com.example.automl_prototype_1.model.Domain.values()) {
+            domainStates.put(d, new com.example.automl_prototype_1.model.DomainState());
+        }
         LogService.info("AppStateService", "AppStateService Initialized (New Instance)");
     }
 
@@ -64,110 +112,127 @@ public class AppStateService {
 
     // --- Getters and Setters ---
 
+    public com.example.automl_prototype_1.model.Domain getCurrentDomain() {
+        return currentDomain;
+    }
+
+    public void setCurrentDomain(com.example.automl_prototype_1.model.Domain currentDomain) {
+        this.currentDomain = currentDomain;
+    }
+
+    public com.example.automl_prototype_1.model.DomainState getDomainState(
+            com.example.automl_prototype_1.model.Domain domain) {
+        return domainStates.get(domain);
+    }
+
+    public com.example.automl_prototype_1.model.DomainState getCurrentDomainState() {
+        return domainStates.get(currentDomain);
+    }
+
     public File getSelectedDatasetFile() {
-        return selectedDatasetFile;
+        return getCurrentDomainState().getSelectedDatasetFile();
     }
 
     public void setSelectedDatasetFile(File selectedDatasetFile) {
-        this.selectedDatasetFile = selectedDatasetFile;
+        getCurrentDomainState().setSelectedDatasetFile(selectedDatasetFile);
     }
 
     public List<String> getDatasetHeaders() {
-        return datasetHeaders;
+        return getCurrentDomainState().getDatasetHeaders();
     }
 
     public void setDatasetHeaders(List<String> datasetHeaders) {
-        this.datasetHeaders = datasetHeaders;
+        getCurrentDomainState().setDatasetHeaders(datasetHeaders);
     }
 
     public Dataset getCurrentDataset() {
-        return currentDataset;
+        return getCurrentDomainState().getCurrentDataset();
     }
 
     public void setCurrentDataset(Dataset currentDataset) {
-        this.currentDataset = currentDataset;
+        getCurrentDomainState().setCurrentDataset(currentDataset);
         LogService.info("AppStateService", "Current dataset set: " +
                 (currentDataset != null ? currentDataset.getHeaders().size() + " columns" : "null"));
     }
 
     public String getTargetColumnName() {
-        return targetColumnName;
+        return getCurrentDomainState().getTargetColumnName();
     }
 
     public void setTargetColumnName(String targetColumnName) {
-        this.targetColumnName = targetColumnName;
+        getCurrentDomainState().setTargetColumnName(targetColumnName);
     }
 
     public List<String> getSelectedAlgorithmNames() {
-        return selectedAlgorithmNames;
+        return getCurrentDomainState().getSelectedAlgorithmNames();
     }
 
     public void setSelectedAlgorithmNames(List<String> selectedAlgorithmNames) {
-        this.selectedAlgorithmNames = selectedAlgorithmNames;
+        getCurrentDomainState().setSelectedAlgorithmNames(selectedAlgorithmNames);
     }
 
     public String getSelectedBaseModelName() {
-        return selectedBaseModelName;
+        return getCurrentDomainState().getSelectedBaseModelName();
     }
 
     public void setSelectedBaseModelName(String selectedBaseModelName) {
-        this.selectedBaseModelName = selectedBaseModelName;
+        getCurrentDomainState().setSelectedBaseModelName(selectedBaseModelName);
     }
 
     public IClassifier getSelectedClassifier() {
-        return selectedClassifier;
+        return getCurrentDomainState().getSelectedClassifier();
     }
 
     public void setSelectedClassifier(IClassifier selectedClassifier) {
-        this.selectedClassifier = selectedClassifier;
+        getCurrentDomainState().setSelectedClassifier(selectedClassifier);
     }
 
     public String getScalingStrategy() {
-        return scalingStrategy;
+        return getCurrentDomainState().getScalingStrategy();
     }
 
     public void setScalingStrategy(String scalingStrategy) {
-        this.scalingStrategy = scalingStrategy;
+        getCurrentDomainState().setScalingStrategy(scalingStrategy);
     }
 
     public int getKFolds() {
-        return kFolds;
+        return getCurrentDomainState().getKFolds();
     }
 
     public void setKFolds(int kFolds) {
-        this.kFolds = kFolds;
+        getCurrentDomainState().setKFolds(kFolds);
     }
 
     public boolean isTuningEnabled() {
-        return isTuningEnabled;
+        return getCurrentDomainState().isTuningEnabled();
     }
 
     public void setTuningEnabled(boolean tuningEnabled) {
-        isTuningEnabled = tuningEnabled;
+        getCurrentDomainState().setTuningEnabled(tuningEnabled);
     }
 
     public boolean isStandardizationEnabled() {
-        return enableStandardization;
+        return getCurrentDomainState().isStandardizationEnabled();
     }
 
     public void setEnableStandardization(boolean enableStandardization) {
-        this.enableStandardization = enableStandardization;
+        getCurrentDomainState().setEnableStandardization(enableStandardization);
     }
 
     public boolean isBalancedOptimizationEnabled() {
-        return enableBalancedOptimization;
+        return getCurrentDomainState().isBalancedOptimizationEnabled();
     }
 
     public void setEnableBalancedOptimization(boolean enableBalancedOptimization) {
-        this.enableBalancedOptimization = enableBalancedOptimization;
+        getCurrentDomainState().setEnableBalancedOptimization(enableBalancedOptimization);
     }
 
     public List<ExecutionResult> getExecutionResults() {
-        return executionResults;
+        return getCurrentDomainState().getExecutionResults();
     }
 
     public void setExecutionResults(List<ExecutionResult> executionResults) {
-        this.executionResults = executionResults;
+        getCurrentDomainState().setExecutionResults(executionResults);
     }
 
     private boolean useGpu = true;
@@ -246,11 +311,11 @@ public class AppStateService {
     }
 
     public com.example.automl_prototype_1.model.PreprocessingConfig getPreprocessingConfig() {
-        return preprocessingConfig;
+        return getCurrentDomainState().getPreprocessingConfig();
     }
 
     public void setPreprocessingConfig(com.example.automl_prototype_1.model.PreprocessingConfig preprocessingConfig) {
-        this.preprocessingConfig = preprocessingConfig;
+        getCurrentDomainState().setPreprocessingConfig(preprocessingConfig);
     }
 
     // --- Advanced Mode Settings ---
@@ -291,6 +356,13 @@ public class AppStateService {
     public void setForceGpu(boolean forceGpu) {
         this.forceGpu = forceGpu;
         LogService.info("AppStateService", "Force GPU: " + forceGpu);
+    }
+
+    /** Convenience alias: disables GPU and switches to CPU-only mode. */
+    public void setForceGpuOff() {
+        setForceGpu(false);
+        setUseGpu(false);
+        LogService.warn("AppStateService", "GPU disabled by self-correction loop (CUDA OOM). CPU-only mode active.");
     }
 
     // --- Pipeline Composition Settings (Phase 3) ---

@@ -8,9 +8,9 @@ import com.example.automl_prototype_1.algorithm.IGPSO;
 import com.example.automl_prototype_1.algorithm.OptimizationAlgorithm;
 import com.example.automl_prototype_1.algorithm.ParallelLocalSearchAlgorithm;
 import com.example.automl_prototype_1.algorithm.WaterWaveOptimization;
-import com.example.automl_prototype_1.classifier.cpu.KnnClassifier;
-import com.example.automl_prototype_1.classifier.cpu.RandomForestClassifier;
-import com.example.automl_prototype_1.classifier.cpu.SvmClassifier;
+import com.example.automl_prototype_1.classifier.ml.KnnClassifier;
+import com.example.automl_prototype_1.classifier.ml.RandomForestClassifier;
+import com.example.automl_prototype_1.classifier.ml.SvmClassifier;
 // AgenticAdvisor, PipelineSuggestion, AlgorithmRegistry, ClassifierRegistry are used FQCN.
 import com.example.automl_prototype_1.registry.AlgorithmRegistry;
 import com.example.automl_prototype_1.registry.ClassifierRegistry;
@@ -20,7 +20,6 @@ import com.example.automl_prototype_1.model.Dataset;
 import com.example.automl_prototype_1.model.DatasetMetaFeatures;
 
 import java.util.*;
-import java.util.stream.Collectors;
 
 public class RecommendationService {
 
@@ -85,46 +84,23 @@ public class RecommendationService {
 
     /**
      * Extracts key statistical and structural characteristics from the dataset.
+     * Delegates to MetaFeatureExtractor (the single source of truth for
+     * meta-feature extraction).
      */
     public DatasetMetaFeatures extractMetaFeatures(Dataset dataset) {
-        final String TARGET_COLUMN = "Class"; // This should be made configurable in the future
+        com.example.automl_prototype_1.service.agentic.MetaFeatureExtractor extractor = new com.example.automl_prototype_1.service.agentic.MetaFeatureExtractor();
+        com.example.automl_prototype_1.service.agentic.MetaFeatures meta = extractor.extract(dataset);
 
-        // 1. Get basic counts
-        long instanceCount = dataset.getRecordCount();
-        long featureCount = dataset.getFeatureCount() - 1; // Subtract 1 for the target column
+        // Bridge the richer MetaFeatures into the simpler DatasetMetaFeatures record
+        double featureToInstanceRatio = meta.getNumInstances() > 0
+                ? (double) meta.getNumFeatures() / meta.getNumInstances()
+                : 0.0;
 
-        // Handle empty or invalid datasets
-        if (instanceCount == 0) {
-            return new DatasetMetaFeatures(0, 0, 0, 1.0, 0.0);
-        }
-
-        // 2. Calculate Class Distribution and Imbalance Ratio
-        int[] labels = dataset.getLabelVector(TARGET_COLUMN);
-        Map<Integer, Long> classCounts = Arrays.stream(labels)
-                .boxed()
-                .collect(Collectors.groupingBy(label -> label, Collectors.counting()));
-
-        int classCount = classCounts.size();
-
-        double imbalanceRatio = 1.0;
-        if (classCount > 1) {
-            long minClassSize = Collections.min(classCounts.values());
-            long maxClassSize = Collections.max(classCounts.values());
-
-            if (minClassSize > 0) {
-                imbalanceRatio = (double) maxClassSize / minClassSize;
-            }
-        }
-
-        // 3. Calculate Feature-to-Instance Ratio
-        double featureToInstanceRatio = (double) featureCount / instanceCount;
-
-        // 4. Construct and return the meta-features object
         return new DatasetMetaFeatures(
-                instanceCount,
-                featureCount,
-                classCount,
-                imbalanceRatio,
+                meta.getNumInstances(),
+                meta.getNumFeatures(),
+                meta.getNumClasses(),
+                meta.getClassImbalanceRatio(),
                 featureToInstanceRatio);
     }
 
@@ -216,24 +192,14 @@ public class RecommendationService {
         // and try to use internal Advisor if we can, but we don't have the dataset
         // object here.
 
-        // WAIT: This method is stateless and public.
-        // Instead of modifying this stateless method, let's update the caller or
-        // modify the `getRecommendations` to INJECT the report into the list?
-
-        // The user complained about "unimplemented logic".
-        // Let's assume the user wants THIS TEXT to be smarter.
-        // Since we can't easily change the signature without seeing the caller (likely
-        // a Controller),
-        // We will leave this legacy method but mark it.
-        // AND we will add a new method that takes Dataset.
-        return "Please use getRecommendationText(Dataset) for AI-enhanced advice.\n\n"
-                + legacyGetRecommendationText(metaFeatures);
+        // Legacy path — prefer getRecommendationText(Dataset) for AI-enhanced advice
+        return legacyGetRecommendationText(metaFeatures);
     }
 
     public String getRecommendationText(Dataset dataset) {
         try (com.example.automl_prototype_1.service.agentic.AgenticAdvisor advisor = new com.example.automl_prototype_1.service.agentic.AgenticAdvisor()) {
             String name = (dataset.getSourceFile() != null) ? dataset.getSourceFile().getName() : "Dataset";
-            return advisor.generateStrategicReport(dataset, name);
+            return advisor.generateStrategicReport(dataset, name, com.example.automl_prototype_1.model.Domain.ML);
         } catch (Exception e) {
             return legacyGetRecommendationText(extractMetaFeatures(dataset));
         }

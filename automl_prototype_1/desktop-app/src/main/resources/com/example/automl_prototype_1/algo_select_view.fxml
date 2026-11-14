@@ -16,29 +16,73 @@
                 </columnConstraints>
             
                 <!-- Left Card: Primary Selections -->
-                <VBox spacing="15" styleClass="card" GridPane.columnIndex="0" GridPane.vgrow="ALWAYS">
-                    <padding><Insets top="20" right="30" bottom="20" left="30"/></padding>
-                    <Label styleClass="header-label" text="2. Select Algorithms"/>
-                    <CheckBox fx:id="selectAllAlgorithms" text="Select All Algorithms" style="-fx-font-weight: bold;"/>
-                    <GridPane hgap="20" vgap="10">
-                        <columnConstraints>
-                            <ColumnConstraints hgrow="SOMETIMES" minWidth="10.0"/>
-                            <ColumnConstraints hgrow="SOMETIMES" minWidth="10.0"/>
-                        </columnConstraints>
-                        <children>
-                            <CheckBox fx:id="checkBPSO" text="BPSO" GridPane.rowIndex="0" GridPane.columnIndex="0"/>
-                            <CheckBox fx:id="checkWWO" text="WWO" GridPane.rowIndex="1" GridPane.columnIndex="0"/>
-                            <CheckBox fx:id="checkASO" text="ASO" GridPane.rowIndex="2" GridPane.columnIndex="0"/>
-                            <CheckBox fx:id="checkGA" text="Genetic Algorithm" GridPane.rowIndex="0" GridPane.columnIndex="1"/>
-                            <CheckBox fx:id="checkIGPSO" text="IGPSO" GridPane.rowIndex="1" GridPane.columnIndex="1"/>
-                            <CheckBox fx:id="checkPLS" text="Parallel Local Search" GridPane.rowIndex="2" GridPane.columnIndex="1"/>
-                            <CheckBox fx:id="checkSA" text="Simulated Annealing" GridPane.rowIndex="3" GridPane.columnIndex="0"/>
-                            <CheckBox fx:id="checkGWO" text="Grey Wolf Optimizer" GridPane.rowIndex="3" GridPane.columnIndex="1"/>
-                            <CheckBox fx:id="checkDE" text="Differential Evolution" GridPane.rowIndex="4" GridPane.columnIndex="0"/>
-                        </children>
-                    </GridPane>
+                <VBox spacing="10" styleClass="card" GridPane.columnIndex="0" GridPane.vgrow="ALWAYS">
+                    <padding><Insets top="10" right="20" bottom="20" left="20"/></padding>
+                    
+                    <TabPane fx:id="modalityTabPane" tabClosingPolicy="UNAVAILABLE" styleClass="floating-tabs">
+                        <!-- Tab 1: Machine Learning (ML) -->
+                        <Tab text="Machine Learning (ML)">
+                            <VBox spacing="15" style="-fx-padding: 15 0 0 0;">
+                                <Label styleClass="header-label" text="Select Meta-Heuristics (Tabular Data)"/>
+                                <CheckBox fx:id="selectAllAlgorithms" text="Select All Algorithms" style="-fx-font-weight: bold;"/>
+                                <GridPane hgap="20" vgap="10">
+                                    <columnConstraints>
+                                        <ColumnConstraints hgrow="SOMETIMES" minWidth="10.0"/>
+                                        <ColumnConstraints hgrow="SOMETIMES" minWidth="10.0"/>
+                                    </columnConstraints>
+                                    <children>
+                                        <CheckBox fx:id="checkBPSO" text="BPSO" GridPane.rowIndex="0" GridPane.columnIndex="0"/>
+                                        <CheckBox fx:id="checkWWO" text="WWO" GridPane.rowIndex="1" GridPane.columnIndex="0"/>
+                                        <CheckBox fx:id="checkASO" text="ASO" GridPane.rowIndex="2" GridPane.columnIndex="0"/>
+                                        <CheckBox fx:id="checkGA" text="Genetic Algorithm" GridPane.rowIndex="0" GridPane.columnIndex="1"/>
+                                        <CheckBox fx:id="checkIGPSO" text="IGPSO" GridPane.rowIndex="1" GridPane.columnIndex="1"/>
+                                        <CheckBox fx:id="checkPLS" text="Parallel Local Search" GridPane.rowIndex="2" GridPane.columnIndex="1"/>
+                                        <CheckBox fx:id="checkSA" text="Simulated Annealing" GridPane.rowIndex="3" GridPane.columnIndex="0"/>
+                                        <CheckBox fx:id="checkGWO" text="Grey Wolf Optimizer" GridPane.rowIndex="3" GridPane.columnIndex="1"/>
+                                        <CheckBox fx:id="checkDE" text="Differential Evolution" GridPane.rowIndex="4" GridPane.columnIndex="0"/>
+                                    </children>
+                                </GridPane>
+                                <Label text="* Applies only to Tabular Data" style="-fx-font-size: 10px; -fx-text-fill: gray;"/>
+                            </VBox>
+                        </Tab>
+                        
+                        <!-- Tab 2: Deep Learning (DL) -->
+                        <Tab text="Deep Learning (DL)">
+                            <VBox spacing="15" style="-fx-padding: 15 0 0 0;" alignment="TOP_CENTER">
+                                <Label styleClass="header-label" text="Deep Learning"/>
+                                <Label text="Dense and Recurrent structures (e.g., MLP, LSTM)." wrapText="true"/>
+                            </VBox>
+                        </Tab>
+
+                        <!-- Tab 3: CNN (Computer Vision) -->
+                        <Tab text="CNN (Computer Vision)">
+                            <VBox spacing="15" style="-fx-padding: 15 0 0 0;" alignment="TOP_CENTER">
+                                <Label styleClass="header-label" text="Convolutional Neural Networks"/>
+                                <Label text="Deep Learning architectures for image classification." wrapText="true"/>
+                                <Label text="Feature selection is handled by CNN layers." style="-fx-text-fill: gray; -fx-font-size: 11px;"/>
+                            </VBox>
+                        </Tab>
+
+                        <!-- Tab 4: LLM / SLM -->
+                        <Tab text="LLM / SLM">
+                            <VBox spacing="15" style="-fx-padding: 15 0 0 0;" alignment="TOP_CENTER">
+                                <Label styleClass="header-label" text="Large/Small Language Models"/>
+                                <Label text="Transformer-based models for advanced NLP tasks." wrapText="true"/>
+                                <Label text="Options: BERT, Generic HuggingFace Classifiers" style="-fx-text-fill: gray; -fx-font-size: 11px;"/>
+                            </VBox>
+                        </Tab>
+                        
+                        <!-- Tab 5: Generative AI -->
+                        <Tab text="Generative AI">
+                            <VBox spacing="15" style="-fx-padding: 15 0 0 0;" alignment="TOP_CENTER">
+                                <Label styleClass="header-label" text="Generative AI &amp; Custom Scripts"/>
+                                <Label text="Run custom arbitrary scripts for generative tasks." wrapText="true"/>
+                            </VBox>
+                        </Tab>
+                    </TabPane>
+                    
                     <Separator prefHeight="20.0"/>
-                    <Label styleClass="header-label" text="3. Select Base ML Model"/>
+                    <Label styleClass="header-label" text="Select Model"/>
                     <ChoiceBox fx:id="baseModelChoiceBox" maxWidth="Infinity"/>
                 </VBox>
             

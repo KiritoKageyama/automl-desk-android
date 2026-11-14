@@ -155,7 +155,8 @@ public class DataVisualizationViewController {
 
     private void updateRealTimeChart() {
         realTimeChart.getData().clear();
-        List<double[]> buffer = rtService.getSnapshot();
+        java.util.List<com.example.automl_prototype_1.service.RealTimeDataService.DataPoint> buffer = rtService
+                .getSnapshot();
         if (buffer.isEmpty())
             return;
 
@@ -165,7 +166,7 @@ public class DataVisualizationViewController {
 
         int start = Math.max(0, buffer.size() - 50);
         for (int i = start; i < buffer.size(); i++) {
-            double val = buffer.get(i)[0]; // Feature 0
+            double val = buffer.get(i).values()[0]; // Feature 0
             series.getData().add(new XYChart.Data<>(i, val));
         }
         realTimeChart.getData().add(series);

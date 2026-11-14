@@ -6,6 +6,7 @@ import com.example.automl_prototype_1.service.agentic.inference.OnnxInferenceEng
 import com.example.automl_prototype_1.service.agentic.inference.PythonInferenceEngine;
 import java.util.ArrayList;
 import java.util.List;
+import com.example.automl_prototype_1.model.Domain;
 
 /**
  * The "Brain" of the Agentic AI layer.
@@ -22,7 +23,8 @@ public class AgenticAdvisor implements AutoCloseable {
         private final MetaFeatureExtractor metaFeatureExtractor;
         private final EmpiricalBenchmarker empiricalBenchmarker;
         private final SotaLookupService sotaLookupService;
-        private final LocalLlmService llmService;
+        private final com.example.automl_prototype_1.service.OllamaService llmService;
+        private final com.example.automl_prototype_1.service.AnthropicService anthropicService;
         private final ConstitutionalService constitutionalService;
         private final IInferenceEngine inferenceEngine;
 
@@ -30,8 +32,9 @@ public class AgenticAdvisor implements AutoCloseable {
                 this.metaFeatureExtractor = new MetaFeatureExtractor();
                 this.empiricalBenchmarker = new EmpiricalBenchmarker();
                 this.sotaLookupService = new SotaLookupService();
-                this.llmService = new LocalLlmService();
-                this.constitutionalService = new ConstitutionalService(); // Initialize Service
+                this.llmService = com.example.automl_prototype_1.service.OllamaService.getInstance();
+                this.constitutionalService = ConstitutionalService.getInstance(); // Initialize Service
+                this.anthropicService = com.example.automl_prototype_1.service.AnthropicService.getInstance();
 
                 // Initialize inference engine with ONNX preference, Python fallback
                 IInferenceEngine engine = null;
@@ -194,8 +197,8 @@ public class AgenticAdvisor implements AutoCloseable {
 
                 suggestions.sort((s1, s2) -> Double.compare(s2.getConfidence(), s1.getConfidence()));
 
-                // 6. AGENTIC VERIFICATION (LLM)
-                if (!suggestions.isEmpty() && llmService.isAvailable()) {
+                // 6. AGENTIC VERIFICATION (Multi-Tier LLM)
+                if (!suggestions.isEmpty()) {
                         int topK = Math.min(suggestions.size(), 3);
                         for (int i = 0; i < topK; i++) {
                                 PipelineSuggestion p = suggestions.get(i);
@@ -211,7 +214,20 @@ public class AgenticAdvisor implements AutoCloseable {
                                                 p.getAlgorithmName(), p.getClassifierName(), meta.getNumInstances(),
                                                 meta.getNumFeatures());
 
-                                String aiFeedback = llmService.queryOllama(promptContext, "active");
+                                String aiFeedback = null;
+                                
+                                // Priority 1: Claude 3.7 (System 2 Thinking)
+                                if (anthropicService.isAvailable()) {
+                                        com.example.automl_prototype_1.service.LogService.info("AgenticAdvisor", "Invoking Claude 3.7 for High-Precision Audit...");
+                                        aiFeedback = anthropicService.queryClaude(promptContext);
+                                }
+                                
+                                // Priority 2: Ollama (System 1/2 Thinking)
+                                if (aiFeedback == null && llmService.isAvailable()) {
+                                        com.example.automl_prototype_1.service.LogService.info("AgenticAdvisor", "Falling back to Ollama for AI Audit...");
+                                        aiFeedback = llmService.queryOllama(promptContext, "active");
+                                }
+
                                 if (aiFeedback != null && !aiFeedback.isEmpty()) {
                                         p.setReasoning(p.getReasoning() + "\n[AI Audit]: " + aiFeedback);
                                 }
@@ -229,26 +245,38 @@ public class AgenticAdvisor implements AutoCloseable {
         /**
          * Generates a comprehensive natural language report on the dataset strategy.
          */
-        public String generateStrategicReport(Dataset dataset, String datasetName) {
+        public String generateStrategicReport(Dataset dataset, String datasetName, Domain currentDomain) {
                 MetaFeatures meta = metaFeatureExtractor.extract(dataset);
+                String domainStr = (currentDomain != null) ? currentDomain.name() : "General ML";
 
                 if (llmService.isAvailable()) {
                         String stats = String.format("Rows: %d, Feats: %d, Sparsity: %.2f",
                                         meta.getNumInstances(), meta.getNumFeatures(), meta.getSparsity());
 
                         String prompt = String.format(
-                                        "Act as a Senior Data Scientist. For dataset '%s' (%s), provide a strategic summary covering:\n"
+                                        "Act as a Senior AI Architect specializing in %s. For dataset '%s' (%s), provide a strategic summary covering:\n"
                                                         +
-                                                        "1. Recommended Cross-Validation Strategy (k-fold vs holdout)\n"
+                                                        "1. Recommended Architectures / Algorithms for %s\n"
                                                         +
-                                                        "2. Data Scaling Requirements\n" +
-                                                        "3. Hyperparameter Tuning importance\n" +
+                                                        "2. Key Preprocessing or Data Prep Requirements\n" +
+                                                        "3. Important Hyperparameters to tune\n" +
                                                         "Keep it professional and concise (max 150 words).",
-                                        datasetName, stats);
+                                        domainStr, datasetName, stats, domainStr);
 
-                        String report = llmService.queryOllama(prompt, "active");
+                        String report = null;
+                        
+                        // Priority 1: Claude
+                        if (anthropicService.isAvailable()) {
+                             report = anthropicService.queryClaude(prompt);
+                        }
+                        
+                        // Priority 2: Ollama
+                        if (report == null && llmService.isAvailable()) {
+                             report = llmService.queryOllama(prompt, "active");
+                        }
+
                         if (report != null && !report.isEmpty()) {
-                                return "--- AI Strategic Analysis ---\n\n" + report;
+                                return "--- Agentic Strategic Report ---\n\n" + report;
                         }
                 }
 
@@ -334,5 +362,60 @@ public class AgenticAdvisor implements AutoCloseable {
                 }
 
                 return recommendation.toString();
+        }
+
+        /**
+         * Quick domain-level advice when no dataset is loaded.
+         * Falls back to a hardcoded heuristic if LLM is unavailable.
+         */
+        public String quickAdvice(com.example.automl_prototype_1.model.Domain domain) {
+                String domainName = domain != null ? domain.name() : "ML";
+                if (llmService != null && llmService.isAvailable()) {
+                        String prompt = "Give 3 concise algorithm recommendations for a " + domainName
+                                        + " task (no dataset loaded). " +
+                                        "Format as: Algorithm → Reason. Max 3 lines.";
+                        return llmService.queryOllama(prompt, "default");
+                }
+                return switch (domainName) {
+                        case "RL" ->
+                                "Start with DQN for discrete action spaces; PPO for continuous.\nUse IGPSO for hyperparameter search.";
+                        case "LLM" ->
+                                "Use Mistral-7B (via Ollama) for instruction following.\nFine-tune with LoRA for domain adaptation.";
+                        case "DL" ->
+                                "ResNet-50 for image tasks; LSTM or Transformer for sequences.\nUse WW0 for architecture search.";
+                        default ->
+                                "Random Forest or XGBoost are strong baselines for tabular ML.\nRun IGPSO or GA for feature selection.";
+                };
+        }
+
+        /**
+         * Post-run advice based on execution results.
+         */
+        public String quickAdvice(List<com.example.automl_prototype_1.model.ExecutionResult> results) {
+                if (results == null || results.isEmpty())
+                        return "No results to analyze.";
+
+                com.example.automl_prototype_1.model.ExecutionResult best = results.stream()
+                                .max(java.util.Comparator.comparingDouble(
+                                                com.example.automl_prototype_1.model.ExecutionResult::getAccuracy))
+                                .orElse(results.get(0));
+
+                if (llmService != null && llmService.isAvailable()) {
+                        String prompt = String.format("The best algorithm was %s with an accuracy of %.2f%%. " +
+                                        "Give a very concise, 1-2 sentence recommendation on what the user should try next to improve this.",
+                                        best.getAlgorithmName(), best.getAccuracy() * 100);
+                        return llmService.queryOllama(prompt, "active");
+                }
+
+                if (best.getAccuracy() < 0.70) {
+                        return "Accuracy is low (" + String.format("%.1f", best.getAccuracy() * 100)
+                                        + "%). Try enabling Feature Selection or Hyperparameter Tuning.";
+                } else if (best.getAccuracy() > 0.95) {
+                        return "Excellent accuracy (" + String.format("%.1f", best.getAccuracy() * 100)
+                                        + "%). Watch out for overfitting. Consider testing on a new dataset.";
+                } else {
+                        return "Solid performance (" + String.format("%.1f", best.getAccuracy() * 100)
+                                        + "%). You might extract more juice by using Stacked Generalization or Neural Networks.";
+                }
         }
 }

@@ -19,11 +19,20 @@ import java.util.stream.Collectors;
  */
 public class AgenticArchitectService {
 
-    private final LocalLlmService llmService;
+    private final com.example.automl_prototype_1.service.OllamaService llmService;
     private static final int MAX_RETRIES = 3;
 
-    public AgenticArchitectService() {
-        this.llmService = new LocalLlmService();
+    private static AgenticArchitectService instance;
+
+    public static synchronized AgenticArchitectService getInstance() {
+        if (instance == null) {
+            instance = new AgenticArchitectService();
+        }
+        return instance;
+    }
+
+    private AgenticArchitectService() {
+        this.llmService = com.example.automl_prototype_1.service.OllamaService.getInstance();
     }
 
     /**
@@ -257,5 +266,89 @@ public class AgenticArchitectService {
         } catch (Exception e) {
             return "Error cleaning";
         }
+    }
+
+    public void attemptAutoFix(String className, String errorLog) {
+        LogService.getInstance().logAI("Architect", "Self-Healing Triggered",
+                "Attempting to fix runtime error in " + className);
+
+        try {
+            // 1. Read existing file
+            String projectRoot = System.getProperty("user.dir");
+            Path path = Path.of(projectRoot,
+                    "../automl_core/src/main/java/com/example/automl_prototype_1/rl/extensions/" + className + ".java");
+
+            if (!Files.exists(path)) {
+                // Try fallback path
+                path = Path
+                        .of("automl_prototype_1/automl_core/src/main/java/com/example/automl_prototype_1/rl/extensions/"
+                                + className + ".java");
+                if (!Files.exists(path)) {
+                    LogService.error("Architect", "Could not find source file for " + className + ". Cannot fix.");
+                    return;
+                }
+            }
+
+            String currentCode = Files.readString(path);
+
+            // 2. Ask LLM to fix
+            String fixedCode = fixCode(currentCode, errorLog, className);
+
+            // 3. Save and Compile
+            if (saveClassFile(fixedCode, className)) {
+                CompileResult result = runMavenCompile();
+                if (result.success) {
+                    LogService.getInstance().logAI("Architect", "Repair Successful",
+                            className + " recompiled successfully.");
+                } else {
+                    LogService.error("Architect", "Repair Failed: Compilation error after fix.\n" + result.errorLog);
+                }
+            }
+        } catch (Exception e) {
+            LogService.error("Architect", "Auto-Fix Exception: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Phase 12: Extract hyperparameters from generated source code for dynamic UI
+     * rendering.
+     */
+    public java.util.Map<String, String> extractParams(String code) {
+        java.util.Map<String, String> params = new java.util.HashMap<>();
+        if (code == null)
+            return params;
+
+        // Simple regex or heuristic to find variable declarations that look like params
+        // Real implementation would use AST (tree-sitter)
+        String[] lines = code.split("\n");
+        for (String line : lines) {
+            line = line.trim();
+            if (line.startsWith("private double") || line.startsWith("private int") || line.startsWith("public double")
+                    || line.startsWith("public int")) {
+                if (line.contains("=")) {
+                    try {
+                        String[] parts = line.split("=");
+                        String left = parts[0].trim();
+                        String right = parts[1].replace(";", "").trim();
+                        String[] leftParts = left.split("\\s+");
+                        String varName = leftParts[leftParts.length - 1];
+                        params.put(varName, right);
+                    } catch (Exception e) {
+                        // ignore unparseable line
+                    }
+                }
+            }
+        }
+        return params;
+    }
+
+    /**
+     * Phase 12: Auto-detect if generated classifier code needs GPU routing.
+     */
+    public boolean needsGpuRouting(String code) {
+        if (code == null)
+            return false;
+        return code.contains("HardwareAcceleratorService") || code.contains("GpuBatchService")
+                || code.contains("device='cuda'") || code.contains("cuda");
     }
 }

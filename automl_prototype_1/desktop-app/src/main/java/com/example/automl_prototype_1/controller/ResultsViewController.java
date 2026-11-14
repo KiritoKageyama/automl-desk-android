@@ -118,13 +118,50 @@ public class ResultsViewController implements Initializable {
         List<ExecutionResult> results = appStateService.getExecutionResults();
         boolean hasOnnx = results != null && results.stream().anyMatch(r -> r.getOnnxModelPath() != null);
         if (exportOnnxButton != null) {
-            exportOnnxButton.setVisible(hasOnnx);
-            exportOnnxButton.setManaged(hasOnnx);
+            boolean isDL = results != null && results.stream().anyMatch(r -> {
+                String algo = r.getAlgorithmName();
+                return algo.contains("Neural") || algo.contains("Deep") || algo.contains("CNN") || algo.contains("MLP")
+                        || algo.contains("LSTM");
+            });
+
+            // Always show Export Model; disable when nothing exportable
+            exportOnnxButton.setVisible(true);
+            exportOnnxButton.setManaged(true);
+            if (!isDL && !hasOnnx) {
+                exportOnnxButton.setDisable(true);
+                exportOnnxButton
+                        .setTooltip(new javafx.scene.control.Tooltip("ONNX Export available only for Neural Networks"));
+            } else {
+                exportOnnxButton.setDisable(false);
+                exportOnnxButton.setTooltip(new javafx.scene.control.Tooltip("Export trained model to ONNX format"));
+            }
         }
     }
 
     private void setupTableColumns() {
         algoCol.setCellValueFactory(new PropertyValueFactory<>("algorithmName"));
+        algoCol.setCellFactory(tc -> new TableCell<>() {
+            @Override
+            protected void updateItem(String item, boolean empty) {
+                super.updateItem(item, empty);
+                if (empty || item == null) {
+                    setText(null);
+                    setTooltip(null);
+                    return;
+                }
+                ExecutionResult row = getTableRow() != null ? getTableRow().getItem() : null;
+                if (row != null && !row.isSuccess()) {
+                    setText(item + " (FAILED)");
+                    setTooltip(new javafx.scene.control.Tooltip(
+                            row.getErrorMessage() != null ? row.getErrorMessage() : "Run failed"));
+                    setStyle("-fx-text-fill: #d35a4a;");
+                } else {
+                    setText(item);
+                    setTooltip(null);
+                    setStyle("");
+                }
+            }
+        });
         accuracyCol.setCellValueFactory(new PropertyValueFactory<>("accuracy"));
         precisionCol.setCellValueFactory(new PropertyValueFactory<>("precision"));
         recallCol.setCellValueFactory(new PropertyValueFactory<>("recall"));
@@ -441,6 +478,17 @@ public class ResultsViewController implements Initializable {
             showAlert(Alert.AlertType.WARNING, "No Model",
                     "The selected result does not have a trained model in memory.\nDid you run 'Refit' or is this a loaded result?");
             return;
+        }
+
+        // Double check compatibility
+        String algoName = selected.getAlgorithmName();
+        boolean isCompatible = algoName.contains("Neural") || algoName.contains("Deep") ||
+                algoName.contains("CNN") || algoName.contains("MLP") ||
+                algoName.contains("LSTM") || algoName.contains("BERT");
+
+        if (!isCompatible) {
+            showAlert(Alert.AlertType.INFORMATION, "Export Format",
+                    "Selected algorithm is not a Neural Network. Exporting as Java Serialized Object (.ser) instead.");
         }
 
         FileChooser fileChooser = new FileChooser();

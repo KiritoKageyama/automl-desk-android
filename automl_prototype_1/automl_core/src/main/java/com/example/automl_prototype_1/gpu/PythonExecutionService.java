@@ -138,6 +138,46 @@ public class PythonExecutionService {
         return Boolean.TRUE.equals(pythonAvailable);
     }
 
+    /**
+     * Sends a raw JSON body to the GPU server (localhost:5006) and returns the
+     * raw JSON response string. Used by workspace controllers that need direct
+     * request access without going through the batch queue.
+     *
+     * @param jsonBody JSON body string (must include an "action" field)
+     * @return Response body from gpu_server.py
+     * @throws Exception On connection failure or server error
+     */
+    public String postRaw(String jsonBody) throws Exception {
+        java.net.URL url = java.net.URI.create("http://127.0.0.1:5006").toURL();
+        java.net.HttpURLConnection conn = (java.net.HttpURLConnection) url.openConnection();
+        conn.setRequestMethod("POST");
+        conn.setRequestProperty("Content-Type", "application/json");
+        conn.setRequestProperty("Expect", ""); // Prevent 100-continue deadlock
+        applyGpuAuth(conn);
+        conn.setConnectTimeout(10000);
+        conn.setReadTimeout(600000); // 10 min for long training jobs
+        conn.setDoOutput(true);
+
+        byte[] bytes = jsonBody.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        conn.setFixedLengthStreamingMode(bytes.length);
+        try (java.io.OutputStream os = conn.getOutputStream()) {
+            os.write(bytes);
+        }
+
+        int status = conn.getResponseCode();
+        try (java.io.InputStream is = status >= 400 ? conn.getErrorStream() : conn.getInputStream();
+                java.io.ByteArrayOutputStream buf = new java.io.ByteArrayOutputStream()) {
+            byte[] chunk = new byte[4096];
+            int n;
+            while ((n = is.read(chunk)) != -1)
+                buf.write(chunk, 0, n);
+            String resp = buf.toString(java.nio.charset.StandardCharsets.UTF_8);
+            if (status >= 400)
+                throw new java.io.IOException("GPU Server error " + status + ": " + resp);
+            return resp;
+        }
+    }
+
     private void checkPythonAvailability() {
         if (!PlatformService.isDesktop()) {
             pythonAvailable = false;
@@ -469,14 +509,6 @@ public class PythonExecutionService {
         return tempFile;
     }
 
-    // --- Server Management ---
-    private volatile Process serverProcess;
-    // private static final int SERVER_PORT = 5000; // Unused
-
-    public boolean isServerRunning() {
-        return serverProcess != null && serverProcess.isAlive();
-    }
-
     public synchronized void startGpuServer() {
         if (!isAvailable())
             return;
@@ -531,6 +563,13 @@ public class PythonExecutionService {
             }
 
             LogService.info("PythonBridge", "Starting GPU Server...");
+            // Extract agent_core first so gpu_server can import it
+            try {
+                extractScriptToTemp("agent_core.py");
+            } catch (Exception e) {
+                LogService.warn("PythonBridge", "Could not extract agent_core.py (LCA might fail): " + e.getMessage());
+            }
+
             File scriptFile = extractScriptToTemp("gpu_server.py");
 
             List<String> command = new ArrayList<>();
@@ -555,6 +594,7 @@ public class PythonExecutionService {
 
             ProcessBuilder pb = new ProcessBuilder(command);
             pb.redirectErrorStream(true);
+            injectGpuAuthEnv(pb);
             serverProcess = pb.start();
             activeProcesses.add(serverProcess);
 
@@ -609,30 +649,9 @@ public class PythonExecutionService {
 
     public void trainModel(com.example.automl_prototype_1.service.IClassifier classifier, double[][] features,
             int[] labels, java.util.Map<String, Object> params) {
-        String algoType;
-        if (classifier instanceof com.example.automl_prototype_1.classifier.MlpClassifier) {
-            algoType = "MLP";
-        } else if (classifier.getName().contains("Random Forest")) {
-            algoType = "RF";
-        } else if (classifier instanceof com.example.automl_prototype_1.classifier.CustomScriptClassifier) {
-            algoType = "CUSTOM_SCRIPT";
-            if (params == null)
-                params = new java.util.HashMap<>();
-            params.put("script_path",
-                    ((com.example.automl_prototype_1.classifier.CustomScriptClassifier) classifier).getScriptPath());
-        } else if (classifier instanceof com.example.automl_prototype_1.classifier.CnnClassifier) {
-            algoType = "CUSTOM_SCRIPT";
-            if (params == null)
-                params = new java.util.HashMap<>();
-            params.put("script_path",
-                    ((com.example.automl_prototype_1.classifier.CnnClassifier) classifier).getScriptPath());
-        } else if (classifier instanceof com.example.automl_prototype_1.classifier.BertClassifier) {
-            algoType = "BERT";
-        } else if (classifier instanceof com.example.automl_prototype_1.classifier.LstmClassifier) {
-            algoType = "LSTM";
-        } else {
-            algoType = "RF"; // Default
-        }
+        AlgoTypeResolver.Resolved resolved = AlgoTypeResolver.resolve(classifier, params);
+        String algoType = resolved.algoType();
+        params = resolved.params();
 
         // --- Arrow Optimization ---
         // If Arrow is available and the algorithm is standard (RF, SVM, etc), use fast
@@ -698,6 +717,7 @@ public class PythonExecutionService {
         con.setRequestProperty("Content-Type", "application/octet-stream");
         con.setRequestProperty("Content-Length", String.valueOf(arrowData.length));
         con.setRequestProperty("X-Algo-Type", algoType);
+        applyGpuAuth(con);
 
         if (params == null)
             params = new java.util.HashMap<>();
@@ -792,39 +812,24 @@ public class PythonExecutionService {
         }
 
         try {
-            // We need to send a synchronous request to GpuServer (bypassing BatchService
-            // for simplicity, or add explicit action to Batch)
-            // Since GpuBatchService handles the queue, we should probably add a generic
-            // 'submitAction' to it?
-            // Or just piggyback on a custom "EXPORT" job type?
-            // Let's do a direct HTTP call for this infrequent operation, BUT we need to be
-            // careful of the queue lock.
-
-            // Safer: Add submitExport to GpuBatchService?
-            // Or just do a quick ad-hoc sync request if queue is empty?
-            // Let's implement a simple direct post here since GpuBatchService isn't easily
-            // extensible in this specific Step.
-            // Wait, we can use the same pattern:
-
-            java.util.Map<String, Object> payload = new java.util.HashMap<>();
-            payload.put("action", "EXPORT_MODEL");
-            payload.put("model_id", modelId);
-
-            // We need X_sample for shape inference?
-            // We'll rely on server fallback or cached dataset.
-
-            // Perform HTTP POST
-            java.net.URL url = java.net.URI.create("http://127.0.0.1:5006").toURL();
+            // Direct HTTP POST to /export_model
+            java.net.URL url = new java.net.URL("http://127.0.0.1:5006/");
             java.net.HttpURLConnection con = (java.net.HttpURLConnection) url.openConnection();
             con.setRequestMethod("POST");
             con.setRequestProperty("Content-Type", "application/json");
+            applyGpuAuth(con);
             con.setDoOutput(true);
 
+            java.util.Map<String, Object> request = new java.util.HashMap<>();
+            request.put("action", "EXPORT_MODEL");
+            request.put("model_id", modelId);
+
             com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
-            String jsonBody = mapper.writeValueAsString(payload);
+            String jsonInputString = mapper.writeValueAsString(request);
 
             try (java.io.OutputStream os = con.getOutputStream()) {
-                os.write(jsonBody.getBytes("utf-8"));
+                byte[] input = jsonInputString.getBytes("utf-8");
+                os.write(input, 0, input.length);
             }
 
             if (con.getResponseCode() == 200) {
@@ -832,46 +837,230 @@ public class PythonExecutionService {
                         new java.io.InputStreamReader(con.getInputStream(), "utf-8"))) {
                     StringBuilder response = new StringBuilder();
                     String line;
-                    while ((line = br.readLine()) != null)
+                    while ((line = br.readLine()) != null) {
                         response.append(line.trim());
-
-                    java.util.Map<String, Object> respMap = mapper.readValue(response.toString(),
+                    }
+                    java.util.Map<String, Object> resp = mapper.readValue(response.toString(),
                             new com.fasterxml.jackson.core.type.TypeReference<java.util.Map<String, Object>>() {
                             });
-                    if (Boolean.TRUE.equals(respMap.get("success"))) {
-                        String tempPath = (String) respMap.get("path");
 
-                        // Move file from tempPath to destinationPath
-                        File source = new File(tempPath);
-
-                        // Fix WSL path if needed
-                        if (AppStateService.getInstance().isUseWsl() && tempPath.startsWith("/mnt/")) {
-                            // Need to convert WSL path to Windows path for Java to read?
-                            // No, if it's in wsl_temp (project dir), it's visible to Windows.
-                            // But server returned a WSL path.
-                            String winPath = convertFromWslPath(tempPath);
-                            source = new File(winPath);
-                        }
-
-                        File dest = new File(destinationPath);
-                        if (source.exists()) {
-                            java.nio.file.Files.copy(source.toPath(), dest.toPath(),
+                    if (Boolean.TRUE.equals(resp.get("success"))) {
+                        String onnxPath = (String) resp.get("path");
+                        if (onnxPath != null) {
+                            // Move file to destination
+                            java.nio.file.Files.copy(java.nio.file.Paths.get(onnxPath),
+                                    java.nio.file.Paths.get(destinationPath),
                                     java.nio.file.StandardCopyOption.REPLACE_EXISTING);
-                            LogService.info("PythonBridge", "Model exported to: " + destinationPath);
                             return true;
-                        } else {
-                            LogService.error("PythonBridge", "Exported file not found at source: " + source);
                         }
                     }
                 }
-            } else {
-                LogService.error("PythonBridge", "Export Request Failed: " + con.getResponseMessage());
             }
-
         } catch (Exception e) {
-            LogService.error("PythonBridge", "Export Exception: " + e.getMessage());
+            LogService.error("PythonBridge", "Export Failed: " + e.getMessage());
         }
         return false;
+    }
+
+    /**
+     * Extracts features from images using ViT or ResNet.
+     * 
+     * @param imagePaths      List of absolute paths to images.
+     * @param modelName       "vit" or "resnet"
+     * @param returnAttention If true, returns attention maps (for ViT).
+     * @return Map containing "features" (List<List<Float>>) and optional
+     *         "attention_maps".
+     */
+    public java.util.Map<String, Object> extractFeatures(java.util.List<String> imagePaths, String modelName,
+            boolean returnAttention) {
+        if (!isServerRunning())
+            startGpuServer();
+
+        try {
+            java.net.URL url = new java.net.URL("http://127.0.0.1:5006/");
+            java.net.HttpURLConnection con = (java.net.HttpURLConnection) url.openConnection();
+            con.setRequestMethod("POST");
+            con.setRequestProperty("Content-Type", "application/json");
+            applyGpuAuth(con);
+            con.setDoOutput(true);
+
+            java.util.Map<String, Object> request = new java.util.HashMap<>();
+            request.put("action", "EXTRACT_FEATURES");
+            request.put("images", imagePaths);
+            request.put("model_name", modelName);
+            request.put("return_attention", returnAttention);
+
+            com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+            String jsonInputString = mapper.writeValueAsString(request);
+
+            try (java.io.OutputStream os = con.getOutputStream()) {
+                byte[] input = jsonInputString.getBytes("utf-8");
+                os.write(input, 0, input.length);
+            }
+
+            if (con.getResponseCode() == 200) {
+                try (java.io.BufferedReader br = new java.io.BufferedReader(
+                        new java.io.InputStreamReader(con.getInputStream(), "utf-8"))) {
+                    StringBuilder response = new StringBuilder();
+                    String line;
+                    while ((line = br.readLine()) != null) {
+                        response.append(line.trim());
+                    }
+                    return mapper.readValue(response.toString(),
+                            new com.fasterxml.jackson.core.type.TypeReference<java.util.Map<String, Object>>() {
+                            });
+                }
+            } else {
+                LogService.error("PythonBridge", "Extract Features Failed: HTTP " + con.getResponseCode());
+            }
+        } catch (Exception e) {
+            LogService.error("PythonBridge", "Extract Features Failed: " + e.getMessage());
+        }
+        return java.util.Collections.emptyMap();
+    }
+
+    // --- Semantic Memory (Phase 8) ---
+
+    public java.util.List<Double> embedText(String text) {
+        if (!isServerRunning())
+            startGpuServer();
+        try {
+            java.util.Map<String, Object> request = new java.util.HashMap<>();
+            request.put("action", "MEMORY_OP");
+            request.put("op", "EMBED");
+            request.put("text", text);
+
+            java.util.Map<String, Object> response = sendRequest(request);
+            if (response != null && response.containsKey("embedding")) {
+                @SuppressWarnings("unchecked")
+                java.util.List<Double> embedding = (java.util.List<Double>) response.get("embedding");
+                return embedding;
+            }
+        } catch (Exception e) {
+            LogService.error("PythonBridge", "Embed Text Failed: " + e.getMessage());
+        }
+        return java.util.Collections.emptyList();
+    }
+
+    public boolean storeMemory(String text, java.util.Map<String, Object> metadata) {
+        if (!isServerRunning())
+            startGpuServer();
+        try {
+            java.util.Map<String, Object> request = new java.util.HashMap<>();
+            request.put("action", "MEMORY_OP");
+            request.put("op", "STORE");
+            request.put("text", text);
+            request.put("metadata", metadata != null ? metadata : new java.util.HashMap<>());
+
+            java.util.Map<String, Object> response = sendRequest(request);
+            return response != null && Boolean.TRUE.equals(response.get("success"));
+        } catch (Exception e) {
+            LogService.error("PythonBridge", "Store Memory Failed: " + e.getMessage());
+        }
+        return false;
+    }
+
+    public java.util.List<java.util.Map<String, Object>> queryMemory(String query, int topK) {
+        if (!isServerRunning())
+            startGpuServer();
+        try {
+            java.util.Map<String, Object> request = new java.util.HashMap<>();
+            request.put("action", "MEMORY_OP");
+            request.put("op", "QUERY");
+            request.put("query", query);
+            request.put("top_k", topK);
+
+            java.util.Map<String, Object> response = sendRequest(request);
+            if (response != null && response.containsKey("matches")) {
+                @SuppressWarnings("unchecked")
+                java.util.List<java.util.Map<String, Object>> matches = (java.util.List<java.util.Map<String, Object>>) response
+                        .get("matches");
+                return matches;
+            }
+        } catch (Exception e) {
+            LogService.error("PythonBridge", "Query Memory Failed: " + e.getMessage());
+        }
+        return java.util.Collections.emptyList();
+    }
+
+    // --- Local SLM (Phase 8) ---
+
+    public String chatWithSLM(String systemPrompt, String userMessage) {
+        if (!isServerRunning())
+            startGpuServer();
+        try {
+            java.util.Map<String, Object> request = new java.util.HashMap<>();
+            request.put("action", "CHAT");
+            request.put("system", systemPrompt);
+            request.put("user", userMessage);
+            request.put("max_tokens", 512);
+
+            java.util.Map<String, Object> response = sendRequest(request);
+            if (response != null && response.containsKey("response")) {
+                return (String) response.get("response");
+            }
+        } catch (Exception e) {
+            LogService.error("PythonBridge", "SLM Chat Failed: " + e.getMessage());
+        }
+        return "Error: Could not generate response from Agent.";
+    }
+
+    private java.util.Map<String, Object> sendRequest(java.util.Map<String, Object> request) throws Exception {
+        java.net.URL url = new java.net.URL("http://127.0.0.1:5006/");
+        java.net.HttpURLConnection con = (java.net.HttpURLConnection) url.openConnection();
+        con.setRequestMethod("POST");
+        con.setRequestProperty("Content-Type", "application/json");
+        applyGpuAuth(con);
+        con.setDoOutput(true);
+
+        com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+        String jsonInputString = mapper.writeValueAsString(request);
+
+        try (java.io.OutputStream os = con.getOutputStream()) {
+            byte[] input = jsonInputString.getBytes("utf-8");
+            os.write(input, 0, input.length);
+        }
+
+        if (con.getResponseCode() == 200) {
+            try (java.io.BufferedReader br = new java.io.BufferedReader(
+                    new java.io.InputStreamReader(con.getInputStream(), "utf-8"))) {
+                StringBuilder response = new StringBuilder();
+                String line;
+                while ((line = br.readLine()) != null) {
+                    response.append(line.trim());
+                }
+                return mapper.readValue(response.toString(),
+                        new com.fasterxml.jackson.core.type.TypeReference<java.util.Map<String, Object>>() {
+                        });
+            }
+        }
+        LogService.error("PythonBridge", "Request Failed: HTTP " + con.getResponseCode());
+        return null;
+    }
+
+    private void applyGpuAuth(java.net.HttpURLConnection conn) {
+        GpuServerAuth auth = GpuServerAuth.getInstance();
+        if (auth.isEnabled() && auth.getToken() != null && !auth.getToken().isBlank()) {
+            conn.setRequestProperty(GpuServerAuth.HEADER, auth.getToken());
+        }
+    }
+
+    private void injectGpuAuthEnv(ProcessBuilder pb) {
+        GpuServerAuth auth = GpuServerAuth.getInstance();
+        auth.ensureResolved();
+        if (auth.isEnabled()) {
+            pb.environment().put("AUTOML_GPU_AUTH", "true");
+            pb.environment().put("AUTOML_GPU_TOKEN", auth.getToken());
+        } else {
+            pb.environment().put("AUTOML_GPU_AUTH", "false");
+        }
+    }
+
+    // --- Server Management ---
+    private volatile Process serverProcess;
+
+    public boolean isServerRunning() {
+        return serverProcess != null && serverProcess.isAlive();
     }
 
     public synchronized void stopGpuServer() {
@@ -903,19 +1092,12 @@ public class PythonExecutionService {
             serverProcess.destroyForcibly();
             serverProcess = null;
         }
-        // Do NOT shutdown GpuBatchService dispatcher generally, just the server
-        // connection.
-        // But if the app is closing, we might want to.
-        // For idle cleanup, we keep GpuBatchService alive to restart server if needed.
     }
 
     public synchronized void restartGpuServer() {
         // Prevent rapid cycling: if cleaned up recently, wait?
         // Simple logic: Stop then Start
         if (serverProcess != null && serverProcess.isAlive()) {
-            // Already running? Maybe check health?
-            // For now, assume if this is called, the caller has good reason (failed
-            // connection).
             stopGpuServer();
         }
         startGpuServer();

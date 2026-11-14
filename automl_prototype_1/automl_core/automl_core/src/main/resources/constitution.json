@@ -1,0 +1,57 @@
+[ {
+  "id" : "NO_SYSTEM_EXIT",
+  "condition" : null,
+  "verdict" : null,
+  "reason" : "Security Violation: Generated code must NOT terminate the JVM. Use exceptions instead.",
+  "warning" : null,
+  "type" : "CODE_BAN",
+  "pattern" : "System\\.exit"
+}, {
+  "id" : "NO_RUNTIME_EXEC",
+  "condition" : null,
+  "verdict" : null,
+  "reason" : "Security Violation: Shell command execution is forbidden.",
+  "warning" : null,
+  "type" : "CODE_BAN",
+  "pattern" : "Runtime\\.getRuntime\\(\\)\\.exec"
+}, {
+  "id" : "NO_PROCESS_BUILDER",
+  "condition" : null,
+  "verdict" : null,
+  "reason" : "Security Violation: Spawning processes is forbidden.",
+  "warning" : null,
+  "type" : "CODE_BAN",
+  "pattern" : "new ProcessBuilder"
+}, {
+  "id" : "MUST_IMPLEMENT_ICLASSIFIER",
+  "condition" : null,
+  "verdict" : null,
+  "reason" : "Contract Violation: The class must implement the IClassifier interface.",
+  "warning" : null,
+  "type" : "CODE_REQUIRE",
+  "pattern" : "implements\\s+IClassifier"
+}, {
+  "id" : "MUST_IMPORT_ICLASSIFIER",
+  "condition" : null,
+  "verdict" : null,
+  "reason" : "Contract Violation: Missing import for IClassifier.",
+  "warning" : null,
+  "type" : "CODE_REQUIRE",
+  "pattern" : "import\\s+com\\.example\\.automl_prototype_1\\.service\\.IClassifier;"
+}, {
+  "id" : "NO_HARDCODED_ABS_PATHS",
+  "condition" : null,
+  "verdict" : null,
+  "reason" : "Portability Violation: Do not use hardcoded absolute Windows paths. Use relative paths or config.",
+  "warning" : null,
+  "type" : "CODE_BAN",
+  "pattern" : "\"[a-zA-Z]:\\\\\\\\[^\"]+\""
+}, {
+  "id" : "AUTO_BAN_CRASHYSORT",
+  "condition" : "algorithm == 'CrashySort'",
+  "verdict" : "VETO",
+  "reason" : "Auto-Ablation: CrashySort has a 75% failure rate over 4 attempts.",
+  "warning" : null,
+  "type" : null,
+  "pattern" : null
+} ]

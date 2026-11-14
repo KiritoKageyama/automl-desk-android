@@ -1,0 +1,223 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.scene.control.*?>
+<?import javafx.scene.layout.*?>
+<?import javafx.scene.image.*?>
+<?import javafx.scene.canvas.*?>
+<?import javafx.geometry.Insets?>
+
+<VBox spacing="0" xmlns:fx="http://javafx.com/fxml/1"
+      fx:controller="com.example.automl_prototype_1.controller.NeuralForgeViewController"
+      style="-fx-background-color: #0d1117;">
+
+    <!-- Header -->
+    <HBox alignment="CENTER_LEFT" spacing="12" style="-fx-background-color: #161b22; -fx-padding: 12 20 12 20; -fx-border-color: transparent transparent #30363d transparent; -fx-border-width: 1;">
+        <Label text="⚡ Neural Forge" style="-fx-font-size: 20px; -fx-font-weight: bold; -fx-text-fill: #e6edf3; -fx-font-family: 'Segoe UI';"/>
+        <Label text="Visual AI Lab · Knowledge Graph · Vision · Memory" style="-fx-text-fill: #8b949e; -fx-font-size: 12px;"/>
+    </HBox>
+
+    <TabPane fx:id="forgeTabPane" VBox.vgrow="ALWAYS"
+             style="-fx-background-color: #0d1117; -fx-tab-min-height: 36px;">
+
+        <!-- ================================================================ -->
+        <!-- Tab 1: Vision (ViT) -->
+        <!-- ================================================================ -->
+        <Tab text="🎥 Vision" closable="false">
+            <SplitPane dividerPositions="0.62" style="-fx-background-color: #0d1117;">
+                <VBox spacing="10" alignment="TOP_CENTER" style="-fx-background-color: #0d1117; -fx-padding: 12;">
+                    <Label text="Agent Vision Feed (ViT)" style="-fx-font-weight: bold; -fx-text-fill: #c9d1d9; -fx-font-size: 13px;"/>
+                    <StackPane style="-fx-background-color: #161b22; -fx-background-radius: 8;">
+                        <ImageView fx:id="visionView" fitWidth="580" fitHeight="380" preserveRatio="true"/>
+                        <Canvas fx:id="attentionOverlay" width="580" height="380"/>
+                    </StackPane>
+                    <HBox spacing="8" alignment="CENTER">
+                        <Button fx:id="btnStartVision" text="▶ Start Vision" styleClass="button-success"/>
+                        <Button fx:id="btnStopVision" text="⏹ Stop" styleClass="button-danger" onAction="#stopVisionLoop"/>
+                        <CheckBox fx:id="chkShowAttention" text="Attention Overlay" selected="true" style="-fx-text-fill: #c9d1d9;"/>
+                        <Separator orientation="VERTICAL"/>
+                        <Label text="FPS:" style="-fx-text-fill: #8b949e;"/>
+                        <Label fx:id="lblVisionFps" text="--" style="-fx-text-fill: #58a6ff;"/>
+                    </HBox>
+                </VBox>
+                <VBox spacing="8" style="-fx-background-color: #161b22; -fx-padding: 12;">
+                    <Label text="Vision Analysis Log" style="-fx-font-weight: bold; -fx-text-fill: #c9d1d9;"/>
+                    <TextArea fx:id="visionLog" VBox.vgrow="ALWAYS" editable="false" wrapText="true"
+                              style="-fx-font-family: 'Consolas'; -fx-font-size: 12px; -fx-control-inner-background: #0d1117; -fx-text-fill: #3fb950;"/>
+                    <Button text="🗑 Clear Log" onAction="#clearVisionLog" styleClass="button"/>
+                </VBox>
+            </SplitPane>
+        </Tab>
+
+        <!-- ================================================================ -->
+        <!-- Tab 2: Reasoning (SLM Chat) -->
+        <!-- ================================================================ -->
+        <Tab text="🧠 Reasoning" closable="false">
+            <VBox spacing="8" style="-fx-background-color: #0d1117; -fx-padding: 12;">
+                <HBox spacing="8" alignment="CENTER_LEFT">
+                    <Label text="Agent Reasoning" style="-fx-font-weight: bold; -fx-text-fill: #c9d1d9; -fx-font-size: 13px;"/>
+                    <Label text="powered by TinyLlama / Mistral" style="-fx-text-fill: #8b949e; -fx-font-size: 11px;"/>
+                    <ComboBox fx:id="cmbReasoningModel" promptText="Model..." style="-fx-background-color: #21262d; -fx-text-fill: #c9d1d9; -fx-pref-width: 160;"/>
+                </HBox>
+                <TextArea fx:id="txtChatHistory" VBox.vgrow="ALWAYS" editable="false" wrapText="true"
+                          style="-fx-font-family: 'Consolas'; -fx-font-size: 13px; -fx-control-inner-background: #0d1117; -fx-text-fill: #e6edf3;"
+                          promptText="Chat history will appear here..."/>
+                <HBox spacing="8">
+                    <TextField fx:id="txtChatInput" HBox.hgrow="ALWAYS" onAction="#handleChat"
+                               promptText="Ask the agent for a plan, strategy, or code..."
+                               style="-fx-background-color: #21262d; -fx-text-fill: #e6edf3; -fx-border-color: #30363d; -fx-border-radius: 8; -fx-background-radius: 8; -fx-padding: 8 12;"/>
+                    <Button fx:id="btnSendChat" text="Send ➤" onAction="#handleChat" styleClass="button-primary"/>
+                    <Button text="🗑" onAction="#clearChat" styleClass="button" style="-fx-padding: 8 10;"/>
+                </HBox>
+            </VBox>
+        </Tab>
+
+        <!-- ================================================================ -->
+        <!-- Tab 3: Knowledge Graph (Interactive Visualization) -->
+        <!-- ================================================================ -->
+        <Tab text="🕸 Knowledge Graph" closable="false">
+            <VBox spacing="0" style="-fx-background-color: #0d1117;">
+
+                <!-- Toolbar Row 1: Core Actions -->
+                <HBox spacing="8" alignment="CENTER_LEFT" style="-fx-background-color: #161b22; -fx-padding: 8 12; -fx-border-color: transparent transparent #30363d transparent; -fx-border-width: 1;">
+                    <Button fx:id="btnRefreshGraph" text="⟳ Refresh" style="-fx-background-color: #238636; -fx-text-fill: white; -fx-background-radius: 6; -fx-cursor: hand;" onAction="#handleRefreshGraph"/>
+                    <Button fx:id="btnAutoLayout" text="◎ Layout" style="-fx-background-color: #21262d; -fx-text-fill: #c9d1d9; -fx-background-radius: 6; -fx-cursor: hand;" onAction="#handleAutoLayout"/>
+                    <Button fx:id="btnCenterView" text="⊙ Center" style="-fx-background-color: #21262d; -fx-text-fill: #8b949e; -fx-background-radius: 6; -fx-cursor: hand;"/>
+                    <Button fx:id="btnAddNode" text="＋ Node" style="-fx-background-color: #1f6feb; -fx-text-fill: white; -fx-background-radius: 6; -fx-cursor: hand;"/>
+                    <Separator orientation="VERTICAL"/>
+                    <Button fx:id="btnExportGraph" text="↑ Export JSON" style="-fx-background-color: #21262d; -fx-text-fill: #8b949e; -fx-background-radius: 6; -fx-cursor: hand;"/>
+                    <Button fx:id="btnImportGraph" text="↓ Import JSON" style="-fx-background-color: #21262d; -fx-text-fill: #8b949e; -fx-background-radius: 6; -fx-cursor: hand;"/>
+                    <Separator orientation="VERTICAL"/>
+                    <CheckBox fx:id="chkLiveMode" text="Live Mode" style="-fx-text-fill: #3fb950;"/>
+                    <CheckBox fx:id="chkShowPhysics" text="Physics" selected="true" style="-fx-text-fill: #58a6ff;"/>
+                    <Region HBox.hgrow="ALWAYS"/>
+                    <Label text="Speed:" style="-fx-text-fill: #8b949e; -fx-font-size: 11px;"/>
+                    <Slider fx:id="sldLayoutSpeed" prefWidth="80" min="0.25" max="4.0" value="1.0"/>
+                    <Label fx:id="lblGraphStatus" text="Click Refresh to build graph" style="-fx-text-fill: #8b949e; -fx-font-size: 11px;"/>
+                </HBox>
+
+                <!-- Toolbar Row 2: Type Filters + Search -->
+                <HBox spacing="6" alignment="CENTER_LEFT" style="-fx-background-color: #0d1117; -fx-padding: 6 12; -fx-border-color: transparent transparent #21262d transparent; -fx-border-width: 1;">
+                    <Label text="Filter:" style="-fx-text-fill: #8b949e; -fx-font-size: 11px;"/>
+                    <ToggleButton fx:id="filterML"    text="ML"    styleClass="toggle-button,toggle-ml"    selected="false"/>
+                    <ToggleButton fx:id="filterRL"    text="RL"    styleClass="toggle-button,toggle-rl"    selected="false"/>
+                    <ToggleButton fx:id="filterLLM"   text="LLM/SLM"  styleClass="toggle-button,toggle-llm"   selected="false"/>
+                    <ToggleButton fx:id="filterLCA"   text="LCA"   styleClass="toggle-button,toggle-lca"   selected="false"/>
+                    <ToggleButton fx:id="filterDL"    text="DL"    styleClass="toggle-button,toggle-dl"    selected="false"/>
+                    <ToggleButton fx:id="filterGenAI" text="GenAI" styleClass="toggle-button,toggle-genai" selected="false"/>
+                    <ToggleButton fx:id="filterData"  text="Data"  styleClass="toggle-button"              selected="false"/>
+                    <Separator orientation="VERTICAL"/>
+                    <ComboBox fx:id="filterType" promptText="Type..." style="-fx-background-color: #21262d; -fx-pref-width: 140;"/>
+                    <Separator orientation="VERTICAL"/>
+                    <TextField fx:id="graphSearchField" promptText="🔍 Search nodes..." prefWidth="180"
+                               style="-fx-background-color: #21262d; -fx-text-fill: #e6edf3; -fx-border-color: #30363d; -fx-border-radius: 20; -fx-background-radius: 20; -fx-padding: 4 12;"/>
+                </HBox>
+
+                <!-- Main Graph Area + Side Panel -->
+                <SplitPane dividerPositions="0.70" VBox.vgrow="ALWAYS" style="-fx-background-color: #0d1117;">
+
+                    <!-- Graph Canvas -->
+                    <StackPane fx:id="graphContainer" style="-fx-background-color: #060a14;"/>
+
+                    <!-- Detail + Edit Side Panel -->
+                    <VBox fx:id="detailPanel" spacing="0" style="-fx-background-color: #161b22; -fx-border-color: transparent transparent transparent #30363d; -fx-border-width: 1;">
+
+                        <!-- Node Info Header -->
+                        <VBox style="-fx-padding: 12 12 8 12; -fx-background-color: #161b22;">
+                            <Label fx:id="detailTitle" text="Select a node or edge"
+                                   style="-fx-font-size: 15px; -fx-font-weight: bold; -fx-text-fill: #e6edf3; -fx-font-family: 'Segoe UI';"/>
+                            <Label fx:id="detailType" text="" style="-fx-text-fill: #58a6ff; -fx-font-size: 10px; -fx-font-family: 'Consolas';"/>
+                        </VBox>
+                        <Separator/>
+
+                        <!-- Scrollable detail content -->
+                        <ScrollPane VBox.vgrow="ALWAYS" fitToWidth="true" style="-fx-background-color: transparent; -fx-background: #161b22;">
+                            <VBox spacing="8" style="-fx-padding: 10 12;">
+
+                                <!-- Description -->
+                                <Label text="Description" style="-fx-font-size: 11px; -fx-font-weight: bold; -fx-text-fill: #8b949e;"/>
+                                <TextArea fx:id="detailDescription" editable="false" wrapText="true" prefHeight="80"
+                                          style="-fx-control-inner-background: #0d1117; -fx-text-fill: #c9d1d9; -fx-font-family: 'Consolas'; -fx-font-size: 11px; -fx-border-color: #30363d; -fx-border-radius: 6;"/>
+
+                                <!-- Connections -->
+                                <Label text="Connections" style="-fx-font-size: 11px; -fx-font-weight: bold; -fx-text-fill: #8b949e;"/>
+                                <ListView fx:id="detailConnections" prefHeight="100"
+                                          style="-fx-background-color: #0d1117; -fx-control-inner-background: #0d1117; -fx-border-color: #30363d; -fx-border-radius: 6;"/>
+
+                                <!-- Metadata -->
+                                <Label text="Metadata" style="-fx-font-size: 11px; -fx-font-weight: bold; -fx-text-fill: #8b949e;"/>
+                                <TextArea fx:id="detailMetadata" editable="false" wrapText="true" prefHeight="60"
+                                          style="-fx-control-inner-background: #0d1117; -fx-text-fill: #c9d1d9; -fx-font-family: 'Consolas'; -fx-font-size: 11px; -fx-border-color: #30363d; -fx-border-radius: 6;"/>
+
+                                <!-- Path Trace -->
+                                <Label text="Shortest Path" style="-fx-font-size: 11px; -fx-font-weight: bold; -fx-text-fill: #8b949e;"/>
+                                <TextArea fx:id="detailPathTrace" editable="false" wrapText="true" prefHeight="50"
+                                          style="-fx-control-inner-background: #0d1117; -fx-text-fill: #d29922; -fx-font-family: 'Consolas'; -fx-font-size: 11px; -fx-border-color: #30363d; -fx-border-radius: 6;"/>
+
+                                <Separator/>
+
+                                <!-- ── Node Edit Panel ── -->
+                                <VBox fx:id="nodeEditPanel" spacing="8" visible="false"
+                                      style="-fx-background-color: #21262d; -fx-background-radius: 8; -fx-padding: 10; -fx-border-color: #30363d; -fx-border-radius: 8;">
+                                    <Label text="✏ Edit Node" style="-fx-font-size: 12px; -fx-font-weight: bold; -fx-text-fill: #58a6ff;"/>
+
+                                    <Label text="Label" style="-fx-font-size: 10px; -fx-text-fill: #8b949e;"/>
+                                    <TextField fx:id="nodeLabelField"
+                                               style="-fx-background-color: #0d1117; -fx-text-fill: #e6edf3; -fx-border-color: #30363d; -fx-border-radius: 6; -fx-background-radius: 6; -fx-padding: 5 8;"/>
+
+                                    <Label text="Description" style="-fx-font-size: 10px; -fx-text-fill: #8b949e;"/>
+                                    <TextArea fx:id="nodeDescField" wrapText="true" prefHeight="60"
+                                              style="-fx-control-inner-background: #0d1117; -fx-text-fill: #c9d1d9; -fx-border-color: #30363d; -fx-border-radius: 6; -fx-font-size: 11px;"/>
+
+                                    <Label text="Type" style="-fx-font-size: 10px; -fx-text-fill: #8b949e;"/>
+                                    <ComboBox fx:id="nodeTypeCombo" maxWidth="Infinity"
+                                              style="-fx-background-color: #0d1117; -fx-text-fill: #e6edf3;"/>
+
+                                    <HBox spacing="6">
+                                        <Button fx:id="btnSaveNodeEdit" text="💾 Save" HBox.hgrow="ALWAYS" maxWidth="Infinity"
+                                                style="-fx-background-color: #238636; -fx-text-fill: white; -fx-background-radius: 6; -fx-cursor: hand;"/>
+                                        <Button fx:id="btnPinNode" text="📌 Pin" HBox.hgrow="ALWAYS" maxWidth="Infinity"
+                                                style="-fx-background-color: #1f6feb; -fx-text-fill: white; -fx-background-radius: 6; -fx-cursor: hand;"/>
+                                        <Button fx:id="btnDeleteNode" text="🗑" HBox.hgrow="NEVER"
+                                                style="-fx-background-color: #b62324; -fx-text-fill: white; -fx-background-radius: 6; -fx-cursor: hand;"/>
+                                    </HBox>
+                                </VBox>
+
+                            </VBox>
+                        </ScrollPane>
+                    </VBox>
+
+                </SplitPane>
+            </VBox>
+        </Tab>
+
+        <!-- ================================================================ -->
+        <!-- Tab 4: Memory (Semantic Vector Store) -->
+        <!-- ================================================================ -->
+        <Tab text="🗄 Memory" closable="false">
+            <SplitPane dividerPositions="0.45" style="-fx-background-color: #0d1117;">
+                <VBox spacing="10" style="-fx-background-color: #161b22; -fx-padding: 14;">
+                    <Label text="Store Memory" style="-fx-font-weight: bold; -fx-text-fill: #c9d1d9; -fx-font-size: 13px;"/>
+                    <TextArea fx:id="txtMemoryInput" promptText="Type something for the agent to remember..." VBox.vgrow="ALWAYS" wrapText="true"
+                              style="-fx-control-inner-background: #0d1117; -fx-text-fill: #e6edf3; -fx-border-color: #30363d; -fx-border-radius: 6;"/>
+                    <HBox spacing="8">
+                        <Button fx:id="btnRemember" text="💾 Store in Memory" HBox.hgrow="ALWAYS" maxWidth="Infinity" onAction="#handleRemember"
+                                style="-fx-background-color: #238636; -fx-text-fill: white; -fx-background-radius: 6; -fx-cursor: hand;"/>
+                    </HBox>
+                    <Label fx:id="lblMemoryStatus" text="" style="-fx-text-fill: #3fb950; -fx-font-size: 11px;"/>
+                </VBox>
+                <VBox spacing="10" style="-fx-background-color: #0d1117; -fx-padding: 14;">
+                    <Label text="Recall (Vector Search)" style="-fx-font-weight: bold; -fx-text-fill: #c9d1d9; -fx-font-size: 13px;"/>
+                    <HBox spacing="8">
+                        <TextField fx:id="txtMemoryQuery" promptText="Search query..." HBox.hgrow="ALWAYS" onAction="#handleRecall"
+                                   style="-fx-background-color: #21262d; -fx-text-fill: #e6edf3; -fx-border-color: #30363d; -fx-border-radius: 8; -fx-background-radius: 8; -fx-padding: 6 12;"/>
+                        <Button fx:id="btnRecall" text="🔍 Recall" onAction="#handleRecall"
+                                style="-fx-background-color: #1f6feb; -fx-text-fill: white; -fx-background-radius: 6; -fx-cursor: hand;"/>
+                    </HBox>
+                    <ListView fx:id="listMemoryResults" VBox.vgrow="ALWAYS"
+                              style="-fx-background-color: #161b22; -fx-control-inner-background: #161b22; -fx-border-color: #30363d; -fx-border-radius: 6;"/>
+                </VBox>
+            </SplitPane>
+        </Tab>
+
+    </TabPane>
+</VBox>

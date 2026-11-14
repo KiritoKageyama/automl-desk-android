@@ -1,0 +1,112 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.geometry.Insets?>
+<?import javafx.scene.control.*?>
+<?import javafx.scene.layout.*?>
+
+<ScrollPane fitToWidth="true" fitToHeight="true" xmlns:fx="http://javafx.com/fxml/1"
+            fx:controller="com.example.automl_prototype_1.controller.LlmWorkspaceController">
+    <content>
+        <VBox spacing="20" style="-fx-padding: 10;">
+            
+            <!-- HEADER -->
+            <HBox alignment="CENTER_LEFT" spacing="10">
+                <Label text="LLM/SLM Workspace" style="-fx-font-size: 24px; -fx-font-weight: bold;"/>
+                <Label text="Text Generation &amp; Fine-Tuning" style="-fx-font-size: 14px; -fx-text-fill: gray;"/>
+            </HBox>
+
+            <!-- 1. DATA UPLOAD SECTION -->
+            <VBox spacing="15" styleClass="card">
+                <padding><Insets top="20" right="30" bottom="20" left="30"/></padding>
+                <Label styleClass="header-label" text="1. Training / Prompt Data"/>
+                <HBox spacing="10" alignment="CENTER_LEFT">
+                    <Button fx:id="browseButton" text="Browse Text Corpus..." onAction="#handleBrowseData"/>
+                    <Label fx:id="selectedFileLabel" text="No corpus selected." wrapText="true" HBox.hgrow="ALWAYS"/>
+                </HBox>
+                <Label text="Upload a highly unstructured text file (.txt, .md, .pdf) or structured QA pairs (.jsonl) for generation tasks." wrapText="true" style="-fx-text-fill: #666;"/>
+            </VBox>
+
+            <!-- 2. LLM MODEL SELECTION -->
+            <GridPane hgap="20" vgap="20">
+                <columnConstraints>
+                    <ColumnConstraints hgrow="SOMETIMES" minWidth="10.0" prefWidth="500.0"/>
+                    <ColumnConstraints hgrow="ALWAYS"/>
+                </columnConstraints>
+            
+                <!-- Left: Select Model -->
+                <VBox spacing="15" styleClass="card" GridPane.columnIndex="0" GridPane.vgrow="ALWAYS">
+                    <padding><Insets top="20" right="30" bottom="20" left="30"/></padding>
+                    <Label styleClass="header-label" text="2. Choose Base Model"/>
+                    
+                    <!-- Built-in models -->
+                    <Label styleClass="sub-header-label" text="Local/Ollama Models"/>
+                    <ChoiceBox fx:id="llmModelChoiceBox" maxWidth="Infinity"/>
+                    
+                    <Separator prefHeight="20.0"/>
+                    
+                    <!-- HuggingFace integration -->
+                    <Label styleClass="sub-header-label" text="HuggingFace Dynamic Models"/>
+                    <HBox spacing="10">
+                        <TextField fx:id="hfModelIdField" promptText="e.g., meta-llama/Llama-2-7b" HBox.hgrow="ALWAYS"/>
+                        <Button fx:id="downloadHfBtn" text="Load from HF" onAction="#handleLoadHfModel"/>
+                    </HBox>
+                    <Label text="Note: Downloading large models requires sufficient GPU VRAM." wrapText="true" style="-fx-text-fill: #999; -fx-font-size: 11px;"/>
+                </VBox>
+            
+                <!-- Right: Fine-Tuning Settings -->
+                <VBox spacing="15" GridPane.columnIndex="1" GridPane.vgrow="ALWAYS">
+                    <VBox spacing="15" styleClass="card">
+                        <padding><Insets top="20" right="30" bottom="20" left="30"/></padding>
+                        <Label styleClass="header-label" text="3. Tuning Strategy"/>
+
+                        <HBox spacing="10" alignment="CENTER_LEFT">
+                            <Label styleClass="sub-header-label" text="Mode:"/>
+                            <ChoiceBox fx:id="tuningModeChoiceBox" prefWidth="200"/>
+                        </HBox>
+                        <Label text="LoRA and QLoRA are PEFT methods ideal for consumer GPUs." style="-fx-text-fill: #666; -fx-font-size: 11px;"/>
+
+                        <Separator prefHeight="10.0"/>
+                        <Label styleClass="sub-header-label" text="Hardware Constraints"/>
+                        <VBox spacing="8">
+                             <CheckBox fx:id="chkQuantize8Bit" text="Enable 8-bit Quantization"/>
+                             <CheckBox fx:id="chkQuantize4Bit" text="Enable 4-bit Quantization"/>
+                             <Label text="GPU detected: Loading models requires ~6GB per billion parameters." style="-fx-font-style: italic; -fx-font-size: 10px;"/>
+                        </VBox>
+                    </VBox>
+                </VBox>
+            </GridPane>
+
+            <!-- 3. FINE-TUNE LAUNCH -->
+            <VBox spacing="12" styleClass="card" VBox.vgrow="NEVER">
+                <padding><Insets top="16" right="30" bottom="16" left="30"/></padding>
+                <Label styleClass="header-label" text="3. Launch Fine-Tuning"/>
+                <HBox spacing="12" alignment="CENTER_LEFT">
+                    <Button fx:id="fineTuneBtn" text="▶ Start Fine-Tuning"
+                            onAction="#handleFineTune"
+                            style="-fx-background-color: #238636; -fx-text-fill: white; -fx-pref-width: 180; -fx-cursor: hand;"/>
+                    <Button fx:id="stopFineTuneBtn" text="⏹ Stop" disable="true"
+                            onAction="#handleStopFineTune"
+                            style="-fx-background-color: #b62324; -fx-text-fill: white; -fx-pref-width: 80; -fx-cursor: hand;"/>
+                    <ProgressBar fx:id="fineTuneProgress" progress="0" HBox.hgrow="ALWAYS" prefHeight="24"/>
+                    <Label fx:id="fineTuneStatusLabel" text="Ready."
+                           style="-fx-text-fill: #8b949e; -fx-font-size: 11px;"/>
+                </HBox>
+                <TextArea fx:id="fineTuneLogArea" editable="false" wrapText="true" prefHeight="90"
+                          promptText="Fine-tuning log will appear here..."
+                          style="-fx-font-family: 'Consolas'; -fx-font-size: 11px;"/>
+            </VBox>
+
+            <!-- INTERACTIVE TEST AREA -->
+            <VBox spacing="15" styleClass="card" VBox.vgrow="ALWAYS">
+                <padding><Insets top="20" right="30" bottom="20" left="30"/></padding>
+                <Label styleClass="header-label" text="Inference / Chat Playground"/>
+                <HBox spacing="10" alignment="CENTER_LEFT">
+                    <TextField fx:id="chatInputField" promptText="Ask your model something..." HBox.hgrow="ALWAYS" onAction="#handleChatSubmit"/>
+                    <Button fx:id="chatSendBtn" text="Send" styleClass="button-accent" onAction="#handleChatSubmit"/>
+                </HBox>
+                <TextArea fx:id="chatHistoryArea" editable="false" wrapText="true" VBox.vgrow="ALWAYS"
+                        prefHeight="200.0" promptText="Chat history will appear here..."/>
+            </VBox>
+        </VBox>
+    </content>
+</ScrollPane>

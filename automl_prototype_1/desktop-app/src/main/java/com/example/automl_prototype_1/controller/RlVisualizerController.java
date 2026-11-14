@@ -2,6 +2,7 @@ package com.example.automl_prototype_1.controller;
 
 import com.example.automl_prototype_1.rl.IEnvironment;
 import com.example.automl_prototype_1.rl.extensions.GridWorldEnv;
+import com.example.automl_prototype_1.rl.agent.TabularQLearningAgent;
 import com.example.automl_prototype_1.service.LogService;
 import com.example.automl_prototype_1.service.agentic.ActiveExplorationService;
 import com.example.automl_prototype_1.service.agentic.BehavioralCloningService;
@@ -27,7 +28,6 @@ import java.util.Optional;
 import java.util.ArrayList;
 import java.util.List;
 
-import java.util.Random;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 public class RlVisualizerController {
@@ -69,17 +69,16 @@ public class RlVisualizerController {
 
     // External Services
     private final RlTrainingService trainingService = new RlTrainingService();
-    private final StrategyInjectorService strategyInjector = new StrategyInjectorService();
-    private final InsightExtractionService insightService = new InsightExtractionService();
     private final ActiveExplorationService explorationService = new ActiveExplorationService();
     private final ExpertStrategyService expertService = new ExpertStrategyService();
     private final BehavioralCloningService cloningService = new BehavioralCloningService();
     private final IntrospectionService introspectionService = new IntrospectionService();
 
     private IEnvironment currentEnv;
-    private final Random random = new Random();
+    private TabularQLearningAgent qAgent;
     private final AtomicBoolean isRunning = new AtomicBoolean(false);
     private boolean useClonedPolicy = false;
+    private int episodeCount = 0;
 
     // Performance Tracking
     private final List<Double> recentRewards = new ArrayList<>();
@@ -113,6 +112,7 @@ public class RlVisualizerController {
             // Fallback if FXML not updated yet (though we just did)
             currentEnv = new GridWorldEnv();
             lastState = currentEnv.reset();
+            ensureQAgent();
         }
 
         LogService.info("Visualizer",
@@ -139,6 +139,10 @@ public class RlVisualizerController {
             if (kickstartBtn != null) {
                 kickstartBtn.setOnAction(e -> handleKickstart());
             }
+        }
+
+        if (injectStrategyBtn != null) {
+            injectStrategyBtn.setOnAction(e -> handleInjectStrategy());
         }
 
         // Input Handling
@@ -184,9 +188,11 @@ public class RlVisualizerController {
         if (newEnv != null) {
             currentEnv = newEnv;
             lastState = currentEnv.reset();
+            ensureQAgent(); // fresh Q-table for new env
+            episodeCount = 0;
             LogService.info("Visualizer", "Switched to environment: " + name);
             draw();
-            statusLabel.setText("Status: Loaded " + name);
+            statusLabel.setText("Status: Loaded " + name + " (Q-Learning ready)");
             totalReward = 0;
             rewardLabel.setText("Reward: 0.0");
         } else {
@@ -194,13 +200,21 @@ public class RlVisualizerController {
         }
     }
 
+    private void ensureQAgent() {
+        if (currentEnv == null)
+            return;
+        qAgent = new TabularQLearningAgent(currentEnv.getActionSpaceSize());
+        LogService.info("Visualizer", "Initialized Tabular Q-Learning agent (ε="
+                + String.format("%.2f", qAgent.getEpsilon()) + ")");
+    }
+
     private int mapKeyToAction(KeyCode code) {
-        // GridWorld: 0=Up, 1=Right, 2=Down, 3=Left
+        // Must match extensions.GridWorldEnv: 0=Up, 1=Down, 2=Left, 3=Right
         return switch (code) {
             case W, UP -> 0;
-            case D, RIGHT -> 1;
-            case S, DOWN -> 2;
-            case A, LEFT -> 3;
+            case S, DOWN -> 1;
+            case A, LEFT -> 2;
+            case D, RIGHT -> 3;
             default -> -1;
         };
     }
@@ -254,9 +268,15 @@ public class RlVisualizerController {
     private void startTraining() {
         if (isRunning.get())
             return;
+        if (currentEnv == null) {
+            statusLabel.setText("Status: No environment loaded");
+            return;
+        }
+        if (qAgent == null)
+            ensureQAgent();
         isRunning.set(true);
-        useClonedPolicy = false; // Default to random/RL
-        statusLabel.setText("Status: Running (Training)");
+        useClonedPolicy = false; // Default to Q-Learning
+        statusLabel.setText(String.format("Status: Q-Learning (ε=%.2f)", qAgent.getEpsilon()));
 
         startLoop();
     }
@@ -289,30 +309,41 @@ public class RlVisualizerController {
     private void resetEnv() {
         stopTraining();
         lastState = currentEnv.reset();
+        ensureQAgent(); // reset Q-table with environment
+        episodeCount = 0;
         totalReward = 0;
         stepCount = 0;
         recentRewards.clear();
         rewardLabel.setText("Reward: 0.0");
         draw();
-        statusLabel.setText("Status: Reset");
+        statusLabel.setText("Status: Reset (new Q-table)");
     }
 
     private void stepEnv() {
+        if (currentEnv == null || lastState == null)
+            return;
+
         stepCount++;
         int action;
+        double[] stateBefore = lastState;
 
-        // 1. Choose Action (Cloned Policy vs Random)
-        if (useClonedPolicy && lastState != null) {
-            // Use the trained KNN policy to predict action from state
+        // 1. Choose Action (Cloned Policy vs Q-Learning)
+        if (useClonedPolicy) {
             action = cloningService.predict(lastState);
         } else {
-            // Random Agent Logic (Placeholder for actual AgenticAdvisor)
-            action = random.nextInt(currentEnv.getActionSpaceSize());
+            if (qAgent == null)
+                ensureQAgent();
+            action = qAgent.chooseAction(lastState);
         }
 
         IEnvironment.StepResult result = currentEnv.step(action);
-        lastState = result.state; // Update state for next step
+        lastState = result.state;
         totalReward += result.reward;
+
+        // Q-Learning update (skip when running cloned demo-only mode)
+        if (!useClonedPolicy && qAgent != null) {
+            qAgent.learn(stateBefore, action, result.reward, result.state, result.done);
+        }
 
         // 2. Track Performance for Introspection
         recentRewards.add(result.reward);
@@ -327,16 +358,22 @@ public class RlVisualizerController {
             if (analysis.driftDetected || analysis.trend == IntrospectionService.AnalysisResult.Trend.DEGRADING) {
                 LogService.warn("Introspection", "Issue detected: " + analysis.toString());
                 KnowledgeBaseService.getInstance().addInsight("Self-Correction", analysis.advice);
-                // Flash status
                 Platform.runLater(() -> statusLabel.setText("Status: " + analysis.advice));
             }
         }
 
         rewardLabel.setText(String.format("Reward: %.2f", totalReward));
+        if (!useClonedPolicy && qAgent != null && stepCount % 10 == 0) {
+            statusLabel.setText(String.format("Status: Q-Learning ep=%d ε=%.2f", episodeCount, qAgent.getEpsilon()));
+        }
         draw();
 
         if (result.done) {
-            LogService.info("Visualizer", "Episode Done! Reward: " + totalReward);
+            episodeCount++;
+            LogService.info("Visualizer", String.format(
+                    "Episode %d done | Reward: %.2f | ε=%.3f",
+                    episodeCount, totalReward,
+                    qAgent != null ? qAgent.getEpsilon() : -1));
             lastState = currentEnv.reset();
             totalReward = 0;
         }
@@ -353,6 +390,16 @@ public class RlVisualizerController {
 
     private void handleExplore() {
         if (exploreBtn.getText().contains("Start")) {
+            Alert confirm = new Alert(Alert.AlertType.CONFIRMATION);
+            confirm.setTitle("Desktop automation");
+            confirm.setHeaderText("Active Exploration presses keys via Robot.");
+            confirm.setContentText("Enable Robot automation and start?");
+            if (confirm.showAndWait().orElse(javafx.scene.control.ButtonType.CANCEL)
+                    != javafx.scene.control.ButtonType.OK) {
+                return;
+            }
+            com.example.automl_prototype_1.service.DesktopAutomationGate.getInstance().setEnabled(true);
+
             // Set Profile
             String selected = "WASD";
             if (profileCombo != null && profileCombo.getValue() != null) {
@@ -369,6 +416,7 @@ public class RlVisualizerController {
             LogService.info("Visualizer", "Active Exploration Started. Switch to game window!");
         } else {
             explorationService.stopExploring();
+            com.example.automl_prototype_1.service.DesktopAutomationGate.getInstance().setEnabled(false);
             exploreBtn.setText("Start Active Exploration");
             statusLabel.setText("Status: Stopped");
         }
@@ -430,6 +478,9 @@ public class RlVisualizerController {
     @FXML
     private Button kickstartBtn;
 
+    @FXML
+    private Button injectStrategyBtn;
+
     // ...
 
     private void handleTrainCloned() {
@@ -455,29 +506,49 @@ public class RlVisualizerController {
     }
 
     private void handleKickstart() {
-        if (trainingService == null)
+        if (currentEnv == null) {
+            statusLabel.setText("Status: No environment loaded");
             return;
-
-        statusLabel.setText("Status: Kickstarting RL...");
+        }
+        statusLabel.setText("Status: Kickstarting RL from clone...");
         kickstartBtn.setDisable(true);
+        cloningService.trainPolicy();
+        if (qAgent == null)
+            ensureQAgent();
 
-        // Use the cloned policy from cloningService
-        com.example.automl_prototype_1.service.IClassifier policy = cloningService.trainPolicy(); // Get the trained one
-                                                                                                  // (it caches)
-
-        trainingService.pretrainFromCloning(currentEnv, policy, 100); // 100 Episodes
-
-        // Wait loop or just assume it starts
+        final TabularQLearningAgent agent = qAgent;
+        final IEnvironment env = currentEnv;
         new Thread(() -> {
+            int seeded = 0;
             try {
-                Thread.sleep(2000);
+                for (int ep = 0; ep < 50; ep++) {
+                    double[] state = env.reset();
+                    boolean done = false;
+                    int steps = 0;
+                    while (!done && steps < 200) {
+                        int action = cloningService.predict(state);
+                        IEnvironment.StepResult result = env.step(action);
+                        agent.learn(state, action, result.reward, result.state, result.done);
+                        state = result.state;
+                        done = result.done;
+                        steps++;
+                    }
+                    seeded++;
+                }
+                LogService.info("Visualizer", "Kickstart seeded Q-table from clone (" + seeded + " episodes).");
             } catch (Exception e) {
+                LogService.error("Visualizer", "Kickstart failed: " + e.getMessage());
             }
             Platform.runLater(() -> {
-                statusLabel.setText("Status: Kickstart Complete. Q-Table Seeded.");
-                LogService.info("Visualizer", "Kickstart finished.");
+                statusLabel.setText(String.format("Status: Kickstart done (ε=%.2f). Press Start.",
+                        agent.getEpsilon()));
+                kickstartBtn.setDisable(false);
+                // Reset env visual state after background episodes
+                lastState = currentEnv.reset();
+                totalReward = 0;
+                draw();
             });
-        }).start();
+        }, "rl-kickstart").start();
     }
 
     private void handleRunCloned() {
@@ -490,5 +561,40 @@ public class RlVisualizerController {
         LogService.info("Visualizer", "Running Cloned Policy...");
 
         startLoop();
+    }
+
+    private void handleInjectStrategy() {
+        String game = envCombo != null && envCombo.getValue() != null
+                ? envCombo.getValue()
+                : "GridWorld";
+        statusLabel.setText("Status: Asking LLM for strategy priors...");
+        injectStrategyBtn.setDisable(true);
+
+        new Thread(() -> {
+            try {
+                StrategyInjectorService injector = new StrategyInjectorService();
+                java.util.Map<String, Double> priors = injector.fetchStrategyGuide(game);
+                Platform.runLater(() -> {
+                    ensureQAgent();
+                    if (priors.isEmpty()) {
+                        statusLabel.setText("Status: No strategy returned (LLM offline?)");
+                    } else {
+                        qAgent.injectPriors(priors);
+                        statusLabel.setText("Status: Injected " + priors.size() + " strategy priors");
+                        if (insightsList != null) {
+                            insightsList.getItems().clear();
+                            priors.forEach((k, v) -> insightsList.getItems()
+                                    .add(String.format("%s → %.2f", k, v)));
+                        }
+                    }
+                    injectStrategyBtn.setDisable(false);
+                });
+            } catch (Exception e) {
+                Platform.runLater(() -> {
+                    statusLabel.setText("Status: Strategy inject failed: " + e.getMessage());
+                    injectStrategyBtn.setDisable(false);
+                });
+            }
+        }, "rl-strategy-inject").start();
     }
 }

@@ -1,0 +1,95 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.geometry.Insets?>
+<?import javafx.scene.control.*?>
+<?import javafx.scene.image.ImageView?>
+<?import javafx.scene.layout.*?>
+
+<ScrollPane fitToWidth="true" fitToHeight="true" xmlns:fx="http://javafx.com/fxml/1"
+            fx:controller="com.example.automl_prototype_1.controller.GenAiWorkspaceController">
+    <content>
+        <VBox spacing="20" style="-fx-padding: 10;">
+            
+            <!-- HEADER -->
+            <HBox alignment="CENTER_LEFT" spacing="10">
+                <Label text="Generative AI Workspace" style="-fx-font-size: 24px; -fx-font-weight: bold;"/>
+                <Label text="Diffusion, GANs &amp; Multi-Modal" style="-fx-font-size: 14px; -fx-text-fill: gray;"/>
+            </HBox>
+
+            <!-- 1. TASK SELECTION -->
+            <VBox spacing="15" styleClass="card">
+                <padding><Insets top="20" right="30" bottom="20" left="30"/></padding>
+                <Label styleClass="header-label" text="1. Generative Task"/>
+                <HBox spacing="15" alignment="CENTER_LEFT">
+                    <Label styleClass="sub-header-label" text="Modality:"/>
+                    <ChoiceBox fx:id="taskChoiceBox" prefWidth="250"/>
+                </HBox>
+                <Label text="Note: For Text-to-Text tasks (Chat/Instruct), please use the LLM/SLM workspace." style="-fx-text-fill: #666; -fx-font-size: 11px;"/>
+            </VBox>
+
+            <!-- 2. MODEL SELECTION -->
+            <GridPane hgap="20" vgap="20">
+                <columnConstraints>
+                    <ColumnConstraints hgrow="SOMETIMES" minWidth="10.0" prefWidth="500.0"/>
+                    <ColumnConstraints hgrow="ALWAYS"/>
+                </columnConstraints>
+            
+                <!-- Left: Model Selection -->
+                <VBox spacing="15" styleClass="card" GridPane.columnIndex="0" GridPane.vgrow="ALWAYS">
+                    <padding><Insets top="20" right="30" bottom="20" left="30"/></padding>
+                    <Label styleClass="header-label" text="2. Model Selection"/>
+                    
+                    <Label styleClass="sub-header-label" text="Select Pre-trained Generator"/>
+                    <ChoiceBox fx:id="modelChoiceBox" maxWidth="Infinity"/>
+                    
+                    <Separator prefHeight="20.0"/>
+                    
+                    <VBox spacing="10">
+                        <Label styleClass="sub-header-label" text="Advanced HuggingFace Model (diffusers)"/>
+                        <HBox spacing="10">
+                            <TextField fx:id="hfModelIdField" promptText="e.g., runnable/stable-diffusion-v1-5" HBox.hgrow="ALWAYS"/>
+                        </HBox>
+                    </VBox>
+                </VBox>
+            
+                <!-- Right: Generation Settings -->
+                <VBox spacing="15" GridPane.columnIndex="1" GridPane.vgrow="ALWAYS">
+                    <VBox spacing="15" styleClass="card">
+                        <padding><Insets top="20" right="30" bottom="20" left="30"/></padding>
+                        <Label styleClass="header-label" text="3. Inference Settings"/>
+
+                        <HBox spacing="10" alignment="CENTER_LEFT">
+                            <Label styleClass="sub-header-label" text="Steps:"/>
+                            <TextField fx:id="stepsField" promptText="50" prefWidth="80"/>
+                            <Label styleClass="sub-header-label" text="CFG Scale:"/>
+                            <TextField fx:id="cfgField" promptText="7.5" prefWidth="80"/>
+                        </HBox>
+                        <HBox spacing="10" alignment="CENTER_LEFT">
+                            <Label styleClass="sub-header-label" text="Resolution:"/>
+                            <ChoiceBox fx:id="resolutionChoiceBox" prefWidth="120"/>
+                        </HBox>
+                        
+                        <Separator prefHeight="10.0"/>
+                        <Label styleClass="sub-header-label" text="Hardware Limits"/>
+                        <CheckBox fx:id="chkUseGpu" text="Enable CUDA/MPS Hardware Acceleration"/>
+                        <CheckBox fx:id="chkAllowPreview" text="Allow procedural / unsupported-task preview (not real Diffusers)"/>
+                    </VBox>
+                </VBox>
+            </GridPane>
+
+            <!-- 3. INTERACTIVE GENERATION PORTAL -->
+            <VBox spacing="15" styleClass="card" VBox.vgrow="ALWAYS">
+                <padding><Insets top="20" right="30" bottom="20" left="30"/></padding>
+                <Label styleClass="header-label" text="Interactive Prompt Studio"/>
+                <HBox spacing="10" alignment="CENTER_LEFT">
+                    <TextField fx:id="promptInputField" promptText="Describe what you want to generate..." HBox.hgrow="ALWAYS" onAction="#handleGenerateAction"/>
+                    <Button fx:id="generateBtn" text="Generate" styleClass="button-accent" onAction="#handleGenerateAction"/>
+                </HBox>
+                <HBox spacing="15" VBox.vgrow="ALWAYS">
+                    <TextArea fx:id="logArea" editable="false" wrapText="true" HBox.hgrow="ALWAYS" prefHeight="220.0" promptText="Generation logs..."/>
+                    <ImageView fx:id="previewImage" fitWidth="280" fitHeight="280" preserveRatio="true" smooth="true"/>
+                </HBox>
+            </VBox>
+        </VBox>
+    </content>
+</ScrollPane>

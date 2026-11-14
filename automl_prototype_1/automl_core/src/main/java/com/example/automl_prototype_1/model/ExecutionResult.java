@@ -25,7 +25,37 @@ public class ExecutionResult {
     // Transient field to hold the live model for export (not serialized to JSON)
     private transient com.example.automl_prototype_1.service.IClassifier trainedClassifier;
 
+    /** When false, metrics must not be treated as a successful run. */
+    private boolean success = true;
+    private String errorMessage;
+
     public ExecutionResult() {
+    }
+
+    public static ExecutionResult failed(String algorithmName, String errorMessage) {
+        ExecutionResult r = new ExecutionResult(algorithmName, Double.NaN, Double.NaN, Double.NaN, 0L);
+        r.success = false;
+        r.errorMessage = errorMessage != null ? errorMessage : "Unknown error";
+        r.precision = Double.NaN;
+        r.recall = Double.NaN;
+        r.f1Score = Double.NaN;
+        return r;
+    }
+
+    public boolean isSuccess() {
+        return success;
+    }
+
+    public void setSuccess(boolean success) {
+        this.success = success;
+    }
+
+    public String getErrorMessage() {
+        return errorMessage;
+    }
+
+    public void setErrorMessage(String errorMessage) {
+        this.errorMessage = errorMessage;
     }
 
     public void setAlgorithmName(String algorithmName) {

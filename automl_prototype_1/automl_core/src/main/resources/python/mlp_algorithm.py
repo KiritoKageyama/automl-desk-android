@@ -72,6 +72,8 @@ class MlpWrapper:
         
         self.model.train()
         for epoch in range(self.max_iter):
+            if callable(getattr(self, 'cancel_check', None)) and self.cancel_check():
+                raise InterruptedError("Training cancelled by user")
             epoch_loss = 0.0
             for batch_X, batch_y in dataloader:
                 optimizer.zero_grad()
@@ -103,17 +105,36 @@ class MlpWrapper:
 # Adapter for gpu_server.py
 def train(X, y, params):
     # Parse params
-    layers_str = str(params.get('hidden_layer_sizes', "100")).strip()
+    layers_str = str(params.get('hidden_layer_sizes', params.get('layers', "100"))).strip()
     try:
         hidden_layers = tuple(map(int, layers_str.split(',')))
-    except:
+    except Exception:
         hidden_layers = (100,)
-        
-    activation = params.get('activation', 'relu')
-    solver = params.get('solver', 'adam')
+
+    activation = str(params.get('activation', 'relu')).lower()
+    if activation == 'gelu':
+        activation = 'relu'  # GELU not in lightweight MLP; closest stable default
+    if activation == 'sigmoid':
+        activation = 'logistic'
+
+    solver = str(params.get('solver', params.get('optimizer', 'adam'))).lower()
+    if solver in ('adamw', 'rmsprop'):
+        solver = 'adam'
+    if solver in ('sgdw', 'sgd'):
+        solver = 'sgd'
+
     alpha = float(params.get('alpha', 0.0001))
-    max_iter = int(params.get('max_iter', 200))
-    
-    wrapper = MlpWrapper(hidden_layers=hidden_layers, activation=activation, solver=solver, alpha=alpha, max_iter=max_iter)
+    max_iter = int(params.get('max_iter', params.get('epochs', 200)))
+    learning_rate = float(params.get('learning_rate', 0.001))
+
+    wrapper = MlpWrapper(
+        hidden_layers=hidden_layers,
+        activation=activation,
+        solver=solver,
+        alpha=alpha,
+        max_iter=max_iter,
+        learning_rate=learning_rate
+    )
+    wrapper.cancel_check = params.get('cancel_check')
     wrapper.fit(X, y)
     return wrapper

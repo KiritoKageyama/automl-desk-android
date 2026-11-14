@@ -1,0 +1,102 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.geometry.Insets?>
+<?import javafx.scene.control.Button?>
+<?import javafx.scene.control.Label?>
+<?import javafx.scene.control.ScrollPane?>
+<?import javafx.scene.layout.ColumnConstraints?>
+<?import javafx.scene.layout.FlowPane?>
+<?import javafx.scene.layout.GridPane?>
+<?import javafx.scene.layout.HBox?>
+<?import javafx.scene.layout.Region?>
+<?import javafx.scene.layout.StackPane?>
+<?import javafx.scene.layout.VBox?>
+
+<ScrollPane fitToWidth="true" hbarPolicy="NEVER" styleClass="overview-root"
+            xmlns:fx="http://javafx.com/fxml/1"
+            fx:controller="com.example.automl_prototype_1.controller.OverviewViewController">
+    <content>
+        <VBox spacing="28">
+            <padding><Insets top="4" right="4" bottom="28" left="4"/></padding>
+
+            <!-- Brand-first hero composition -->
+            <StackPane fx:id="heroPane" alignment="TOP_LEFT" minHeight="280" prefHeight="300">
+                <Region fx:id="heroGlow" mouseTransparent="true" pickOnBounds="false"
+                        prefWidth="520" prefHeight="280" maxWidth="520" maxHeight="280"
+                        style="-fx-background-color: radial-gradient(center 70% 40%, radius 65%, rgba(228,161,74,0.18), transparent); -fx-background-radius: 24;"/>
+                <VBox spacing="14" maxWidth="720" alignment="TOP_LEFT">
+                    <padding><Insets top="28" right="24" bottom="20" left="8"/></padding>
+                    <HBox spacing="10" alignment="BASELINE_LEFT">
+                        <Label text="AutoML" styleClass="hero-brand"/>
+                        <Label text="Studio" styleClass="hero-mark"/>
+                    </HBox>
+                    <Label text="Design intelligent systems in one atelier."
+                           wrapText="true" styleClass="hero-headline"/>
+                    <Label text="Train tabular models, deep nets, vision, language, generative media, and agents — with live progress and remote monitoring."
+                           wrapText="true" maxWidth="560" styleClass="hero-support"/>
+                    <HBox spacing="12" alignment="CENTER_LEFT">
+                        <padding><Insets top="8" right="0" bottom="0" left="0"/></padding>
+                        <Button fx:id="heroPrimary" text="Start with data" styleClass="button-accent hero-cta"/>
+                        <Button fx:id="heroSecondary" text="Open pipeline" styleClass="hero-cta-ghost"/>
+                    </HBox>
+                </VBox>
+            </StackPane>
+
+            <GridPane fx:id="metricStrip" hgap="12" vgap="12" styleClass="metric-strip">
+                <columnConstraints>
+                    <ColumnConstraints percentWidth="20"/>
+                    <ColumnConstraints percentWidth="20"/>
+                    <ColumnConstraints percentWidth="20"/>
+                    <ColumnConstraints percentWidth="20"/>
+                    <ColumnConstraints percentWidth="20"/>
+                </columnConstraints>
+                <VBox spacing="7" styleClass="metric-card" GridPane.columnIndex="0">
+                    <Label text="DATASET" styleClass="metric-label"/>
+                    <Label fx:id="datasetValue" text="No dataset" styleClass="metric-value" wrapText="true"/>
+                </VBox>
+                <VBox spacing="7" styleClass="metric-card" GridPane.columnIndex="1">
+                    <Label text="ACTIVE DOMAIN" styleClass="metric-label"/>
+                    <Label fx:id="domainValue" text="Machine Learning" styleClass="metric-value" wrapText="true"/>
+                </VBox>
+                <VBox spacing="7" styleClass="metric-card" GridPane.columnIndex="2">
+                    <Label text="EXPERIMENT" styleClass="metric-label"/>
+                    <Label fx:id="experimentValue" text="Idle" styleClass="metric-value"/>
+                </VBox>
+                <VBox spacing="7" styleClass="metric-card" GridPane.columnIndex="3">
+                    <Label text="GLOBAL BEST" styleClass="metric-label"/>
+                    <Label fx:id="bestValue" text="No completed run" styleClass="metric-value" wrapText="true"/>
+                </VBox>
+                <VBox spacing="7" styleClass="metric-card" GridPane.columnIndex="4">
+                    <Label text="REMOTE MONITOR" styleClass="metric-label"/>
+                    <Label fx:id="remoteValue" text="Offline" styleClass="metric-value"/>
+                </VBox>
+            </GridPane>
+
+            <VBox fx:id="domainsSection" spacing="12">
+                <Label text="DOMAINS" styleClass="section-kicker"/>
+                <Label text="Choose a craft to enter" styleClass="section-title"/>
+                <FlowPane hgap="12" vgap="12" prefWrapLength="1000">
+                    <Button fx:id="mlCard" text="ML&#10;Tabular models &amp; feature selection" styleClass="domain-card"/>
+                    <Button fx:id="dlCard" text="DL&#10;Dense &amp; sequence networks" styleClass="domain-card"/>
+                    <Button fx:id="visionCard" text="VISION&#10;CNN training &amp; transfer learning" styleClass="domain-card"/>
+                    <Button fx:id="llmCard" text="LLM / SLM&#10;Chat, tuning &amp; quantization" styleClass="domain-card"/>
+                    <Button fx:id="genAiCard" text="GENAI&#10;Diffusion &amp; multimodal generation" styleClass="domain-card"/>
+                    <Button fx:id="rlCard" text="RL&#10;Environments, cloning &amp; Q-learning" styleClass="domain-card"/>
+                </FlowPane>
+            </VBox>
+
+            <VBox fx:id="actionsSection" spacing="12">
+                <Label text="ACTIONS" styleClass="section-kicker"/>
+                <Label text="Jump back into work" styleClass="section-title"/>
+                <HBox spacing="10">
+                    <Button fx:id="uploadAction" text="Upload dataset" styleClass="quick-action" HBox.hgrow="ALWAYS" maxWidth="Infinity"/>
+                    <Button fx:id="pipelineAction" text="Design pipeline" styleClass="quick-action" HBox.hgrow="ALWAYS" maxWidth="Infinity"/>
+                    <Button fx:id="modelHubAction" text="Open model hub" styleClass="quick-action" HBox.hgrow="ALWAYS" maxWidth="Infinity"/>
+                    <Button fx:id="runAction" text="Run experiment" styleClass="button-accent" HBox.hgrow="ALWAYS" maxWidth="Infinity"/>
+                </HBox>
+            </VBox>
+
+            <Region VBox.vgrow="ALWAYS"/>
+        </VBox>
+    </content>
+</ScrollPane>

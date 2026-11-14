@@ -1,0 +1,33 @@
+flowchart TD
+    subgraph "Java Application (LCA)"
+        Sense[PerceptionService] -->|Snapshot| Brain[LcaService - Brain Stem]
+        Brain -->|Serialized State| PyBridge[PythonExecutionService]
+        Brain -->|Action Plan| Hands[ActionDispatcher]
+        Hands -->|Robot| Desktop[Desktop / Environment]
+        
+        subgraph "Safety & Cognition"
+            Human[User] -->|Demonstration| Clone[BehavioralCloningService]
+            Clone -->|Kickstart| RL[RLTrainingService / Q-Learning]
+            Board[ConstitutionalService] -->|Audit| LLM_Orch[OllamaService]
+        end
+    end
+
+    subgraph "Python / GPU Layer"
+        PyBridge -->|HTTP POST :5006| GpuServer[gpu_server.py]
+        GpuServer -->|Inference| Vision[Vision Models]
+        GpuServer -->|RAG| Memory[Vector Memory]
+        GpuServer -->|Chat| SLM[Embedded SLM (TinyLlama)]
+    end
+
+    subgraph "External Integration"
+        LLM_Orch -->|Generate / Chat| Ollama[Local Ollama (Llama3/Mistral)]
+    end
+
+    %% Data Flows
+    GpuServer -->|Decision JSON| Brain
+    RL -->|Exploration Strategy| Brain
+    LLM_Orch -->|Generated Code / Strategy| Brain
+    
+    style Brain fill:#f9f,stroke:#333,stroke-width:2px
+    style GpuServer fill:#bbf,stroke:#333,stroke-width:2px
+    style Ollama fill:#bfb,stroke:#333,stroke-width:2px

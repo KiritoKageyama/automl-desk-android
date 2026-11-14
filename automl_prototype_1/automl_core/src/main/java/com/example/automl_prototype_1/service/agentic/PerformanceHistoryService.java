@@ -79,6 +79,21 @@ public class PerformanceHistoryService {
         LogService.info("PerformanceHistory", "All history cleared.");
     }
 
+    /**
+     * Returns the algorithm with the highest failure rate (after ≥ 3 attempts),
+     * or null if no qualifying algorithm exists.
+     */
+    public String getWorstAlgorithm() {
+        if (data == null || data.algorithms.isEmpty())
+            return null;
+        return data.algorithms.entrySet().stream()
+                .filter(e -> e.getValue().attempts >= 3)
+                .max(java.util.Comparator.comparingDouble(
+                        e -> getFailureRate(e.getKey())))
+                .map(Map.Entry::getKey)
+                .orElse(null);
+    }
+
     private void loadHistory() {
         try {
             if (Files.exists(configPath)) {

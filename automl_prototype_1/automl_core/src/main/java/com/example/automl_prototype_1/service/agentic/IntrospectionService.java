@@ -9,12 +9,12 @@ import com.example.automl_prototype_1.service.LogService;
  */
 public class IntrospectionService {
 
-    private final LocalLlmService llmService;
+    private final com.example.automl_prototype_1.service.OllamaService llmService;
     private static final double ALPHA_EMA = 0.2; // Smoothing factor for EMA
     private static final double CUSUM_THRESHOLD = 5.0; // Standard deviations for drift detection
 
     public IntrospectionService() {
-        this.llmService = new LocalLlmService();
+        this.llmService = com.example.automl_prototype_1.service.OllamaService.getInstance();
     }
 
     /**
@@ -93,8 +93,13 @@ public class IntrospectionService {
 
         // 4. Formulate Advice
         String advice = "Continue current strategy.";
+
         if (drift) {
-            advice = "CRITICAL: Significant performance drift detected. Reset environment or aggressive exploration needed.";
+            if (trend == AnalysisResult.Trend.IMPROVING) {
+                advice = "BREAKTHROUGH: Significant positive drift detected. Performance is exceeding historical baseline.";
+            } else {
+                advice = "CRITICAL: Significant negative drift detected. Reset environment or aggressive exploration needed.";
+            }
         } else if (trend == AnalysisResult.Trend.DEGRADING) {
             advice = "Performance is slowly degrading. Check for overfitting or local optima.";
         } else if (trend == AnalysisResult.Trend.IMPROVING) {

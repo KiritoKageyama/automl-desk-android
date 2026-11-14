@@ -34,6 +34,7 @@ public class GpuBatchService {
     private static final long BATCH_WINDOW_MS = 10; // Reduced to 10ms to avoid latency penalty for small batches
     private static final String SERVER_URL = "http://127.0.0.1:5006";
     private static final long BYPASS_JSON_THRESHOLD_BYTES = 1024L; // 1KB - Force Arrow for almost everything
+    private static final long MMAP_THRESHOLD_BYTES = 10L * 1024 * 1024; // 10MB - Use MMAP zero-copy for large datasets
 
     private final ITrainingDataSerializer arrowSerializer = new ArrowTrainingDataSerializer();
 
@@ -253,25 +254,29 @@ public class GpuBatchService {
         List<GpuJob> uploadJobs = batch.stream().filter(j -> j.type == GpuJob.Type.UPLOAD)
                 .collect(java.util.stream.Collectors.toList());
 
-        // --- Optimized High-Volume Path (Arrow) ---
-        // Inspect trainJobs for LARGE payloads
+        // --- Optimized High-Volume Path ---
+        // Tier 1: MMAP Zero-Copy (>10MB) | Tier 2: Arrow HTTP (>1KB) | Tier 3: JSON
+        List<GpuJob> mmapJobs = new ArrayList<>();
         List<GpuJob> arrowJobs = new ArrayList<>();
         if (!trainJobs.isEmpty()) {
-            // Need mutable iterator to remove
             java.util.Iterator<GpuJob> it = trainJobs.iterator();
             while (it.hasNext()) {
                 GpuJob job = it.next();
                 if (job.features != null && job.features.length > 0) {
                     long sizeBytes = (long) job.features.length * job.features[0].length * 8;
-                    if (sizeBytes > BYPASS_JSON_THRESHOLD_BYTES) {
+                    if (sizeBytes > MMAP_THRESHOLD_BYTES) {
+                        mmapJobs.add(job);
+                        it.remove();
+                    } else if (sizeBytes > BYPASS_JSON_THRESHOLD_BYTES) {
                         arrowJobs.add(job);
-                        it.remove(); // Remove from JSON batch
+                        it.remove();
                     }
                 }
             }
         }
 
-        // Inspect uploadJobs for LARGE payloads (Arrow)
+        // Inspect uploadJobs for LARGE payloads (Arrow/MMAP)
+        List<GpuJob> mmapUploads = new ArrayList<>();
         List<GpuJob> arrowUploads = new ArrayList<>();
         if (!uploadJobs.isEmpty()) {
             java.util.Iterator<GpuJob> it = uploadJobs.iterator();
@@ -279,7 +284,10 @@ public class GpuBatchService {
                 GpuJob job = it.next();
                 if (job.features != null && job.features.length > 0) {
                     long sizeBytes = (long) job.features.length * job.features[0].length * 8;
-                    if (sizeBytes > BYPASS_JSON_THRESHOLD_BYTES) {
+                    if (sizeBytes > MMAP_THRESHOLD_BYTES) {
+                        mmapUploads.add(job);
+                        it.remove();
+                    } else if (sizeBytes > BYPASS_JSON_THRESHOLD_BYTES) {
                         arrowUploads.add(job);
                         it.remove();
                     }
@@ -287,12 +295,20 @@ public class GpuBatchService {
             }
         }
 
-        // Process Arrow Jobs Individually
+        // Process MMAP Jobs (Zero-Copy, highest priority)
+        for (GpuJob job : mmapJobs) {
+            processMmapJob(job, "TRAIN_MMAP");
+        }
+        for (GpuJob job : mmapUploads) {
+            processMmapJob(job, "UPLOAD_MMAP");
+        }
+
+        // Process Arrow HTTP Jobs (medium payloads)
         for (GpuJob job : arrowJobs) {
             processArrowJob(job);
         }
 
-        // Process Arrow Uploads Individually
+        // Process Arrow Uploads
         for (GpuJob job : arrowUploads) {
             processArrowUpload(job);
         }
@@ -319,7 +335,6 @@ public class GpuBatchService {
 
     private void processArrowJob(GpuJob job) {
         try {
-            LogService.info("GpuBatchService", "Bypassing JSON for Large Job " + job.id + ". Using Arrow.");
             LogService.info("GpuBatchService", "Bypassing JSON for Large Job " + job.id + ". Using Arrow.");
             SerializedData data = arrowSerializer
                     .serializeTrainingRequest(job.features, job.labels, job.params);
@@ -399,6 +414,84 @@ public class GpuBatchService {
         }
     }
 
+    /**
+     * Phase 9: Zero-Copy MMAP transfer for large datasets (>10MB).
+     * Writes Arrow IPC to an OS-managed temp file. Python reads it via
+     * pa.memory_map() — zero data copying. Only a lightweight JSON pointer
+     * is sent over HTTP.
+     */
+    private void processMmapJob(GpuJob job, String action) {
+        try {
+            long sizeBytes = (long) job.features.length * job.features[0].length * 8;
+            long sizeMB = sizeBytes / (1024 * 1024);
+            LogService.info("GpuBatchService",
+                    "MMAP Zero-Copy for Job " + job.id + " (" + sizeMB + " MB). Action: " + action);
+
+            // 1. Write Arrow IPC to temp file (OS keeps in Page Cache = RAM)
+            com.example.automl_prototype_1.service.pipeline.ArrowService arrowService = com.example.automl_prototype_1.service.pipeline.ArrowService
+                    .getInstance();
+            String mmapPath = arrowService.writeToMmap(job.features, job.labels);
+
+            // 2. Send lightweight JSON pointer (NOT the data)
+            ObjectNode request = mapper.createObjectNode();
+            request.put("action", action);
+            request.put("mmap_path", mmapPath);
+            request.put("data_type", "TABULAR");
+            request.put("job_id", job.id);
+            if (job.algoType != null) {
+                request.put("algo_type", job.algoType);
+            }
+            if (job.params != null) {
+                ObjectNode pNode = request.putObject("params");
+                putParams(pNode, job.params);
+            }
+
+            // 3. Send the pointer (tiny JSON, ~200 bytes)
+            String responseStr = sendPost(SERVER_URL, request.toString());
+
+            // 4. Parse response
+            ObjectNode response = (ObjectNode) mapper.readTree(responseStr);
+            if (action.equals("TRAIN_MMAP")) {
+                if (response.has("results")) {
+                    ArrayNode results = (ArrayNode) response.get("results");
+                    if (results.size() > 0) {
+                        com.fasterxml.jackson.databind.JsonNode rNode = results.get(0);
+                        boolean success = rNode.get("success").asBoolean();
+                        if (success) {
+                            String mId = rNode.get("model_id").asText();
+                            if (rNode.has("onnx_path") && !rNode.get("onnx_path").isNull()) {
+                                mId += "|" + rNode.get("onnx_path").asText();
+                            }
+                            job.future.complete(mId);
+                        } else {
+                            job.future.completeExceptionally(new RuntimeException(
+                                    rNode.has("error") ? rNode.get("error").asText() : "MMAP Train Error"));
+                        }
+                    }
+                }
+            } else {
+                // UPLOAD_MMAP
+                if (response.has("id")) {
+                    job.future.complete(response.get("id").asText());
+                } else {
+                    job.future.completeExceptionally(new RuntimeException(
+                            response.has("error") ? response.get("error").asText() : "MMAP Upload Error"));
+                }
+            }
+
+            // 5. Cleanup: delete the temp file after Python has read it
+            try {
+                new java.io.File(mmapPath).delete();
+            } catch (Exception ignored) {
+            }
+
+        } catch (Exception e) {
+            LogService.error("GpuBatchService", "MMAP Job Failed: " + e.getMessage());
+            TelemetryService.getInstance().recordError("MmapTransfer");
+            job.future.completeExceptionally(e);
+        }
+    }
+
     private void sendBatchRequest(List<GpuJob> jobs, String action) {
         try {
             ObjectNode request = mapper.createObjectNode();
@@ -435,7 +528,7 @@ public class GpuBatchService {
                     // Params
                     if (job.params != null) {
                         ObjectNode pNode = jNode.putObject("params");
-                        job.params.forEach((k, v) -> pNode.put(k, v.toString()));
+                        putParams(pNode, job.params);
                     }
                 } else if (action.equals("PREDICT_BATCH")) {
                     // Strip ONNX path if present (format: "uuid|path")
@@ -579,6 +672,39 @@ public class GpuBatchService {
         }
     }
 
+    private void putParams(ObjectNode pNode, java.util.Map<String, Object> params) {
+        if (params == null) {
+            return;
+        }
+        params.forEach((k, v) -> {
+            if (v == null) {
+                pNode.putNull(k);
+            } else if (v instanceof Boolean b) {
+                pNode.put(k, b);
+            } else if (v instanceof Integer i) {
+                pNode.put(k, i);
+            } else if (v instanceof Long l) {
+                pNode.put(k, l);
+            } else if (v instanceof Float f) {
+                pNode.put(k, f);
+            } else if (v instanceof Double d) {
+                pNode.put(k, d);
+            } else if (v instanceof String s) {
+                pNode.put(k, s);
+            } else {
+                // Lists/maps/etc — preserve structure (critical for image_paths / text_paths)
+                pNode.set(k, mapper.valueToTree(v));
+            }
+        });
+    }
+
+    private void applyGpuAuthHeader(HttpURLConnection conn) {
+        GpuServerAuth auth = GpuServerAuth.getInstance();
+        if (auth.isEnabled() && auth.getToken() != null && !auth.getToken().isBlank()) {
+            conn.setRequestProperty(GpuServerAuth.HEADER, auth.getToken());
+        }
+    }
+
     private String sendPost(String urlStr, String jsonBody) throws Exception {
         return sendRequest(urlStr, jsonBody.getBytes("utf-8"), "application/json", null);
     }
@@ -594,6 +720,7 @@ public class GpuBatchService {
                 conn.setRequestProperty(entry.getKey(), entry.getValue());
             }
         }
+        applyGpuAuthHeader(conn);
         conn.setFixedLengthStreamingMode(body.length);
         conn.setRequestProperty("Content-Length", String.valueOf(body.length));
         // Disable Expect: 100-continue to prevent deadlock with simple Python server

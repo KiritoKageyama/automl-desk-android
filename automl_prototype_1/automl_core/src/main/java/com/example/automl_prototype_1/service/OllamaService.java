@@ -1,33 +1,41 @@
 package com.example.automl_prototype_1.service;
 
-import java.net.URI;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
-import java.time.Duration;
+import com.example.automl_prototype_1.service.agentic.DomainGuardService;
 
-import java.util.concurrent.CompletableFuture;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.example.automl_prototype_1.service.agentic.ProjectContextService;
-import com.example.automl_prototype_1.service.agentic.CodeModificationService;
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
+import java.io.OutputStream;
+import java.net.HttpURLConnection;
+import java.net.URL;
+import java.nio.charset.StandardCharsets;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicLong;
 
+/**
+ * LLM client service: manages the Ollama process lifecycle (Start-on-Demand,
+ * Stop-on-Idle), provides queryOllama() for all agentic services, and exposes
+ * safety controls (emergency stop, interrupt, clear cache).
+ */
 public class OllamaService {
 
-    private static OllamaService instance;
-    private final HttpClient httpClient;
-    private final ObjectMapper mapper;
-    private final ProjectContextService projectContextService;
-    private final CodeModificationService codeModService;
+    private static final String OLLAMA_API_URL = "http://localhost:11434/api/generate";
+    private static final int TIMEOUT_MS = 5000;
 
-    private OllamaService() {
-        this.httpClient = HttpClient.newBuilder()
-                .connectTimeout(Duration.ofSeconds(10))
-                .build();
-        this.mapper = new ObjectMapper();
-        this.projectContextService = new ProjectContextService();
-        this.codeModService = new CodeModificationService();
-    }
+    // Domain boundary enforcement
+    private final DomainGuardService domainGuardService;
+
+    // Lifecycle Management
+    private static Process ollamaProcess = null;
+    private static final ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
+    private static final long IDLE_TIMEOUT_MS = 5 * 60 * 1000; // 5 Minutes
+    private static final AtomicLong lastActivityTime = new AtomicLong(System.currentTimeMillis());
+    private static boolean isMonitoring = false;
+
+    private String cachedModel = null;
+
+    private static OllamaService instance;
 
     public static synchronized OllamaService getInstance() {
         if (instance == null) {
@@ -36,158 +44,280 @@ public class OllamaService {
         return instance;
     }
 
-    public CompletableFuture<String> chat(String userMessage) {
-        AppStateService appState = AppStateService.getInstance();
-        if (!appState.isOllamaEnabled()) {
-            return CompletableFuture.completedFuture("AI Assistant is disabled in Settings.");
+    private OllamaService() {
+        this.domainGuardService = new DomainGuardService();
+
+        // Register Shutdown Hook
+        Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+            com.example.automl_prototype_1.service.LogService.info("OllamaService", "Shutdown hook triggered.");
+            stopOllamaProcess();
+        }));
+
+        // Start the idle monitor daemon
+        if (!isMonitoring) {
+            startIdleMonitor();
+            isMonitoring = true;
         }
-
-        String model = appState.getOllamaModelName();
-        String url = appState.getOllamaUrl() + "/api/generate"; // Use generate for simple prompt, or /api/chat
-
-        // Build System Context
-        String systemContext = buildSystemContext(appState);
-        String fullPrompt = systemContext + "\n\nUser Question: " + userMessage + "\n\nAssistant Response:";
-
-        // JSON Body
-        ObjectNode json = mapper.createObjectNode();
-        json.put("model", model);
-        json.put("prompt", fullPrompt);
-        json.put("stream", false);
-
-        HttpRequest request = HttpRequest.newBuilder()
-                .uri(URI.create(url))
-                .header("Content-Type", "application/json")
-                .POST(HttpRequest.BodyPublishers.ofString(json.toString()))
-                .build();
-
-        return httpClient.sendAsync(request, HttpResponse.BodyHandlers.ofString())
-                .thenApply(response -> {
-                    if (response.statusCode() == 200) {
-                        try {
-                            com.fasterxml.jackson.databind.JsonNode resJson = mapper.readTree(response.body());
-                            if (resJson.has("response")) {
-                                return resJson.get("response").asText();
-                            }
-                            return "No response content.";
-                        } catch (Exception e) {
-                            return "Error parsing response: " + e.getMessage();
-                        }
-                    } else if (response.statusCode() == 404) {
-                        return "Error: Model '" + model + "' not found. Check Settings or run 'ollama pull " + model
-                                + "'.";
-                    } else {
-                        return "Error: Ollama returned status " + response.statusCode();
-                    }
-                })
-                .exceptionally(e -> {
-                    // Try to auto-start if connection fails
-                    if (e.getMessage().contains("ConnectException") || e.getMessage().contains("Connection refused")) {
-                        boolean started = tryStartOllamaServer();
-                        if (started) {
-                            return "Ollama server was not running. I have attempted to start it. Please wait a few seconds and try again.";
-                        }
-                    }
-                    return "Error connecting to Ollama: " + e.getMessage() + ". Is it running?";
-                });
     }
 
-    private boolean tryStartOllamaServer() {
+    private void startIdleMonitor() {
+        scheduler.scheduleAtFixedRate(() -> {
+            synchronized (OllamaService.class) {
+                if (ollamaProcess != null && ollamaProcess.isAlive()) {
+                    long idleTime = System.currentTimeMillis() - lastActivityTime.get();
+                    if (idleTime > IDLE_TIMEOUT_MS) {
+                        com.example.automl_prototype_1.service.LogService.info("OllamaService",
+                                "Ollama idle for 5m. Shutting down to save resources.");
+                        stopOllamaProcess();
+                    }
+                }
+            }
+        }, 1, 1, TimeUnit.MINUTES);
+    }
+
+    private synchronized void stopOllamaProcess() {
+        if (ollamaProcess != null) {
+            ollamaProcess.destroyForcibly();
+            ollamaProcess = null;
+            com.example.automl_prototype_1.service.LogService.info("OllamaService", "Ollama process terminated.");
+        }
+    }
+
+    public boolean isAvailable() {
         try {
-            System.out.println("Attempting to auto-start Ollama server...");
-            // Use ProcessBuilder to start 'ollama serve'
-            // We assume 'ollama' is in PATH or known location
-            ProcessBuilder pb = new ProcessBuilder("ollama", "serve");
-            pb.redirectErrorStream(true);
-            pb.start();
-            // Give it a moment to spin up
-            Thread.sleep(2000);
-            return true;
-        } catch (Exception ex) {
-            System.err.println("Failed to auto-start Ollama: " + ex.getMessage());
-            // Try explicit path check as fallback?
+            URL url = java.net.URI.create("http://localhost:11434").toURL();
+            HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+            conn.setRequestMethod("GET");
+            conn.setConnectTimeout(500); // Fast check
+            conn.connect();
+            return conn.getResponseCode() == 200;
+        } catch (Exception e) {
             return false;
         }
     }
 
-    private String buildSystemContext(AppStateService appState) {
-        StringBuilder sb = new StringBuilder();
-        sb.append("You are an expert AutoML Assistant integrated into a Java application.\n");
-        sb.append("Current Context:\n");
+    // --- Safety Controls (Phase 3) ---
 
-        if (appState.getSelectedDatasetFile() != null) {
-            sb.append("- Dataset: ").append(appState.getSelectedDatasetFile().getName()).append("\n");
+    /**
+     * Emergency Stop: Kills the LLM process immediately.
+     */
+    public void emergencyStop() {
+        com.example.automl_prototype_1.service.LogService.warn("OllamaService", "🚨 EMERGENCY STOP TRIGGERED 🚨");
+        stopOllamaProcess();
+    }
+
+    /**
+     * Interrupts the current generation loop (Soft Stop).
+     */
+    public void interrupt() {
+        com.example.automl_prototype_1.service.LogService.info("OllamaService", "Interrupt signal received.");
+    }
+
+    /**
+     * Clears LLM context/cache and restarts.
+     */
+    public void clearCache() {
+        com.example.automl_prototype_1.service.LogService.info("OllamaService", "Clearing LLM Cache...");
+        this.cachedModel = null;
+        stopOllamaProcess();
+        // It will auto-restart on next request
+    }
+
+    private String getBestAvailableModel() {
+        if (cachedModel != null)
+            return cachedModel;
+
+        try {
+            URL url = java.net.URI.create("http://localhost:11434/api/tags").toURL();
+            HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+            conn.setRequestMethod("GET");
+            conn.setConnectTimeout(2000);
+
+            if (conn.getResponseCode() != 200)
+                return "mistral";
+
+            StringBuilder response = new StringBuilder();
+            try (BufferedReader br = new BufferedReader(
+                    new InputStreamReader(conn.getInputStream(), StandardCharsets.UTF_8))) {
+                String line;
+                while ((line = br.readLine()) != null)
+                    response.append(line);
+            }
+
+            String json = response.toString().toLowerCase();
+            String[] priorities = { "deepseek", "qwen", "llama3", "mistral", "olmo", "gemma", "codellama", "llama" };
+
+            for (String keyword : priorities) {
+                String tag = extractTagContaining(json, keyword);
+                if (tag != null) {
+                    cachedModel = tag;
+                    return cachedModel;
+                }
+            }
+
+            String firstTag = extractTagContaining(json, "");
+            if (firstTag != null) {
+                cachedModel = firstTag;
+                return cachedModel;
+            }
+
+        } catch (Exception e) {
+        }
+
+        cachedModel = "mistral";
+        return cachedModel;
+    }
+
+    private String extractTagContaining(String json, String keyword) {
+        String searchKey = "\"name\":\"";
+        int idx = 0;
+        while ((idx = json.indexOf(searchKey, idx)) != -1) {
+            idx += searchKey.length();
+            int end = json.indexOf("\"", idx);
+            if (end != -1) {
+                String tagName = json.substring(idx, end);
+                if (tagName.contains(keyword)) {
+                    return tagName;
+                }
+            }
+        }
+        return null;
+    }
+
+    private final com.fasterxml.jackson.databind.ObjectMapper objectMapper = new com.fasterxml.jackson.databind.ObjectMapper();
+
+    public String queryOllama(String prompt, String reserved) {
+        // Enforce Domain Boundaries
+        if (!domainGuardService.validate(prompt)) {
+            com.example.automl_prototype_1.service.LogService.warn("OllamaService",
+                    "Domain Boundary Rejection: Query outside of CS domain. Prompt: " +
+                            (prompt.length() > 50 ? prompt.substring(0, 50) + "..." : prompt));
+            return "[DOMAIN REJECTION] I can only assist with Computer Science related queries (Algorithms, ML, Systems, Coding, Security).";
+        }
+
+        lastActivityTime.set(System.currentTimeMillis()); // Beat heart
+
+        // PRIORITY: Try Embedded SLM (TinyLlama) via GPU Server (Phase 8)
+        // ONLY if reserved mode is NOT "DEEP_THOUGHT"
+        if (!"DEEP_THOUGHT".equals(reserved)) {
+            try {
+                com.example.automl_prototype_1.gpu.PythonExecutionService pythonService = com.example.automl_prototype_1.gpu.PythonExecutionService
+                        .getInstance();
+
+                if (pythonService.isServerRunning()) {
+                    // 1. RECALL MEMORIES (Phase 8)
+                    // We construct a query context from the usage prompt
+                    java.util.List<java.util.Map<String, Object>> memories = pythonService.queryMemory(prompt, 3);
+
+                    StringBuilder memoryContext = new StringBuilder();
+                    if (!memories.isEmpty()) {
+                        memoryContext.append("\n[RECALLED MEMORIES]:\n");
+                        for (java.util.Map<String, Object> mem : memories) {
+                            memoryContext.append("- ").append(mem.get("text")).append("\n");
+                        }
+                    }
+
+                    // 2. INJECT CONSTITUTION (Phase 8)
+                    // We inject high-level rules if the prompt involves "strategy" or "code"
+                    StringBuilder constitutionContext = new StringBuilder();
+                    if (prompt.toLowerCase().contains("strategy") || prompt.toLowerCase().contains("code")
+                            || prompt.toLowerCase().contains("recommend")) {
+                        constitutionContext.append("\n[CONSTITUTIONAL RULES]:\n");
+                        // Hardcoded high-level summary for now, or could fetch from service if we
+                        // expose a "summarize" method
+                        constitutionContext.append("- prioritize accuracy over speed unless specified\n");
+                        constitutionContext.append("- avoid algorithms that are known to freeze on large datasets\n");
+                        constitutionContext.append("- never generate malicious code patterns\n");
+                    }
+
+                    // 3. CONSTRUCT SYSTEM PROMPT
+                    String systemPrompt = "You are an expert AutoML Assistant. " +
+                            "Use the provided Memories and Constitution to guide your answer.\n" +
+                            constitutionContext.toString() +
+                            memoryContext.toString();
+
+                    String response = pythonService.chatWithSLM(systemPrompt, prompt);
+
+                    if (response != null && !response.startsWith("Error:")) {
+                        com.example.automl_prototype_1.service.LogService.info("OllamaService",
+                                "Served via Embedded SLM (TinyLlama) with RAG & Constitution");
+                        return response;
+                    }
+                }
+            } catch (Exception e) {
+                com.example.automl_prototype_1.service.LogService.warn("OllamaService",
+                        "Embedded SLM failed, falling back to Ollama: " + e.getMessage());
+            }
         } else {
-            sb.append("- No dataset selected.\n");
+            com.example.automl_prototype_1.service.LogService.info("OllamaService",
+                    "Bypassing SLM for Deep Thought (System 2)...");
         }
 
-        sb.append("- Selected Algorithms: ").append(appState.getSelectedAlgorithmNames()).append("\n");
-        sb.append("- GPU Enabled: ").append(appState.isUseGpu()).append("\n");
+        // FALLBACK: External Ollama Instance
+        String modelToUse = getBestAvailableModel();
 
-        sb.append("Provide concise, helpful insights about machine learning, the dataset, or the app's features.\n\n");
-
-        // === CONTEXT INJECTION: PROJECT STRUCTURE ===
-        sb.append("--- PROJECT STRUCTURE ---\n");
-        sb.append(projectContextService.getProjectStructure());
-        sb.append("--- END PROJECT STRUCTURE ---\n\n");
-
-        // === CONTEXT INJECTION: INTERFACE CONTRACT ===
-        sb.append("--- INTERFACE CONTRACT (MANDATORY) ---\n");
-        sb.append("Any classifier you generate MUST implement this Java interface exactly:\n");
         try {
-            String iClassifierSource = codeModService.readFile(
-                    "automl_core/src/main/java/com/example/automl_prototype_1/service/IClassifier.java");
-            sb.append(iClassifierSource);
-        } catch (Exception e) {
-            sb.append(
-                    "// IClassifier: void train(double[][] features, int[] labels); int[] predict(double[][] features); String getName();\n");
-        }
-        sb.append("\n--- END INTERFACE CONTRACT ---\n\n");
+            URL url = java.net.URI.create(OLLAMA_API_URL).toURL();
+            HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+            conn.setRequestMethod("POST");
+            conn.setRequestProperty("Content-Type", "application/json");
+            conn.setDoOutput(true);
+            conn.setConnectTimeout(TIMEOUT_MS);
+            conn.setReadTimeout(45000); // Allow time for cold-start model load
 
-        // === CONTEXT INJECTION: EXAMPLE IMPLEMENTATION ===
-        sb.append("--- EXAMPLE CLASSIFIER IMPLEMENTATION (Follow This Pattern) ---\n");
-        try {
-            String exampleClassifier = codeModService.readFile(
-                    "automl_core/src/main/java/com/example/automl_prototype_1/classifier/LogisticRegression.java");
-            sb.append(exampleClassifier);
-        } catch (Exception e) {
-            sb.append("// Example unavailable. Follow IClassifier contract above.\n");
-        }
-        sb.append("\n--- END EXAMPLE ---\n\n");
+            com.fasterxml.jackson.databind.node.ObjectNode requestNode = objectMapper.createObjectNode();
+            requestNode.put("model", modelToUse);
+            requestNode.put("prompt", prompt);
+            requestNode.put("stream", false);
 
-        // --- CODING CAPABILITY UPGRADE ---
-        sb.append("--- CODING ASSISTANT CAPABILITY ENABLED ---\n");
-        sb.append(
-                "You have the ability to modify the project code. To request a code change, you MUST use the following XML format:\n");
-        sb.append("<edit_request>\n");
-        sb.append("  <file>relative/path/to/file.java</file>\n");
-        sb.append("  <content>\n");
-        sb.append("     // Entire new content of the file (or sufficient context)\n");
-        sb.append("     public class ... \n");
-        sb.append("  </content>\n");
-        sb.append("</edit_request>\n");
-        sb.append("To CREATE a new file, use:\n");
-        sb.append("<create_file>\n");
-        sb.append("  <path>relative/path/to/new_file.java</path>\n");
-        sb.append("  <content>\n");
-        sb.append("     // File content\n");
-        sb.append("  </content>\n");
-        sb.append("</create_file>\n");
-        sb.append("To MODIFY the Constitution (Rules), use:\n");
-        sb.append("<update_constitution>\n");
-        sb.append("  <id>unique_rule_id</id>\n");
-        sb.append("  <condition>meta.numInstances > 50000</condition>\n");
-        sb.append("  <verdict>WARN</verdict>\n");
-        sb.append("  <reason>Reason for warning...</reason>\n");
-        sb.append("</update_constitution>\n");
-        sb.append("To ENABLE/DISABLE Strict Mode (Absolute Rules), use:\n");
-        sb.append("<set_strict_mode>true</set_strict_mode>\n");
-        sb.append("IMPORTANT: You are PROHIBITED from modifying files in 'automl_core' or 'desktop-app'.\n");
-        sb.append("If you need to change core logic (e.g., a Classifier), you MUST:\n");
-        sb.append("1. Read the core file to understand it.\n");
-        sb.append("2. Create a DUPLICATE in a new folder called 'custom_extensions'.\n");
-        sb.append("3. Modify the duplicate.\n");
-        sb.append("Use this sparingly and ONLY when explicitly asked to change code. Otherwise, just chat normally.");
-        return sb.toString();
+            try (OutputStream os = conn.getOutputStream()) {
+                byte[] input = objectMapper.writeValueAsBytes(requestNode);
+                os.write(input, 0, input.length);
+            }
+
+            int status = conn.getResponseCode();
+            if (status != 200) {
+                com.example.automl_prototype_1.service.LogService.warn("OllamaService",
+                        "Ollama API Error: " + status);
+                return null;
+            }
+
+            com.fasterxml.jackson.databind.JsonNode responseNode = objectMapper.readTree(conn.getInputStream());
+            if (responseNode.has("response")) {
+                return responseNode.get("response").asText().trim();
+            }
+            return null;
+
+        } catch (Exception e) {
+            com.example.automl_prototype_1.service.LogService.warn("OllamaService",
+                    "Query Failed: " + e.getMessage());
+            return queryCloudFallback(prompt);
+        }
+    }
+
+    private String queryCloudFallback(String prompt) {
+        com.example.automl_prototype_1.service.LogService.info("OllamaService", "Attempting Cloud Fallback via Anthropic (Claude 3.7)...");
+        AnthropicService anthropicService = AnthropicService.getInstance();
+        if (anthropicService.isAvailable()) {
+            return anthropicService.queryClaude(prompt);
+        }
+        
+        com.example.automl_prototype_1.service.LogService.warn("OllamaService", "Cloud Fallback failed: AnthropicService unavailable.");
+        return null;
+    }
+
+    /**
+     * Queries the "Big Brain" (DeepSeek/Gemma) directly, bypassing the local SLM.
+     * Used by AntigravityObserver for deep analysis.
+     */
+    public String queryDeep(String prompt) {
+        return queryOllama(prompt, "DEEP_THOUGHT");
+    }
+
+    /**
+     * Asynchronous chat method for UI Controllers.
+     */
+    public java.util.concurrent.CompletableFuture<String> chat(String message) {
+        return java.util.concurrent.CompletableFuture.supplyAsync(() -> queryOllama(message, "chat"));
     }
 }

@@ -1,0 +1,111 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.geometry.Insets?>
+<?import javafx.scene.control.*?>
+<?import javafx.scene.layout.*?>
+
+<ScrollPane fitToWidth="true" fitToHeight="true" xmlns:fx="http://javafx.com/fxml/1"
+            fx:controller="com.example.automl_prototype_1.controller.DlWorkspaceController">
+    <content>
+        <VBox spacing="20" style="-fx-padding: 10;">
+            
+            <!-- HEADER -->
+            <HBox alignment="CENTER_LEFT" spacing="10">
+                <Label text="Deep Learning Workspace" style="-fx-font-size: 24px; -fx-font-weight: bold;"/>
+                <Label text="Neural Networks &amp; Deep Architectures" style="-fx-font-size: 14px; -fx-text-fill: gray;"/>
+            </HBox>
+
+            <!-- 1. DATA UPLOAD SECTION -->
+            <VBox spacing="15" styleClass="card">
+                <padding><Insets top="20" right="30" bottom="20" left="30"/></padding>
+                <Label styleClass="header-label" text="1. Training Data (Tabular or Time-Series)"/>
+                <HBox spacing="10" alignment="CENTER_LEFT">
+                    <Button fx:id="browseButton" text="Browse Dataset..." onAction="#handleBrowseData"/>
+                    <Label fx:id="selectedFileLabel" text="No dataset selected." wrapText="true" HBox.hgrow="ALWAYS"/>
+                </HBox>
+                <Label text="Upload structured data (.csv) for Multi-Layer Perceptrons or sequence data arrays." wrapText="true" style="-fx-text-fill: #666;"/>
+                <HBox spacing="15" alignment="CENTER_LEFT">
+                    <Label styleClass="sub-header-label" text="Target Variable:"/>
+                    <ChoiceBox fx:id="targetColumnChoiceBox" prefWidth="250" disable="true"/>
+                </HBox>
+            </VBox>
+
+            <!-- 2. ARCHITECTURE SELECTION -->
+            <GridPane hgap="20" vgap="20">
+                <columnConstraints>
+                    <ColumnConstraints hgrow="SOMETIMES" minWidth="10.0" prefWidth="500.0"/>
+                    <ColumnConstraints hgrow="ALWAYS"/>
+                </columnConstraints>
+            
+                <!-- Left: Network Topologies -->
+                <VBox spacing="15" styleClass="card" GridPane.columnIndex="0" GridPane.vgrow="ALWAYS">
+                    <padding><Insets top="20" right="30" bottom="20" left="30"/></padding>
+                    <Label styleClass="header-label" text="2. Network Architecture"/>
+                    
+                    <Label styleClass="sub-header-label" text="Select Topology"/>
+                    <ChoiceBox fx:id="topologyChoiceBox" maxWidth="Infinity"/>
+                    
+                    <Separator prefHeight="20.0"/>
+                    
+                    <Label styleClass="sub-header-label" text="Layer Configuration"/>
+                    <HBox spacing="10" alignment="CENTER_LEFT">
+                        <Label text="Hidden Layers: "/>
+                        <TextField fx:id="layersField" promptText="e.g., [128, 64, 32]" HBox.hgrow="ALWAYS"/>
+                    </HBox>
+                    <HBox spacing="10" alignment="CENTER_LEFT">
+                        <Label text="Activation: "/>
+                        <ChoiceBox fx:id="activationChoiceBox" prefWidth="150"/>
+                    </HBox>
+                </VBox>
+            
+                <!-- Right: Training Hyperparameters -->
+                <VBox spacing="15" GridPane.columnIndex="1" GridPane.vgrow="ALWAYS">
+                    <VBox spacing="15" styleClass="card">
+                        <padding><Insets top="20" right="30" bottom="20" left="30"/></padding>
+                        <Label styleClass="header-label" text="3. Optimizer &amp; Learning"/>
+
+                        <HBox spacing="10" alignment="CENTER_LEFT">
+                            <Label styleClass="sub-header-label" text="Optimizer:"/>
+                            <ChoiceBox fx:id="optimizerChoiceBox" prefWidth="200"/>
+                        </HBox>
+                        <HBox spacing="10" alignment="CENTER_LEFT">
+                            <Label styleClass="sub-header-label" text="Learning Rate:"/>
+                            <TextField fx:id="lrField" promptText="0.001" prefWidth="100"/>
+                        </HBox>
+                        <HBox spacing="10" alignment="CENTER_LEFT">
+                            <Label styleClass="sub-header-label" text="Epochs:"/>
+                            <TextField fx:id="epochsField" promptText="100" prefWidth="100"/>
+                        </HBox>
+
+                        <Separator prefHeight="10.0"/>
+                        <Label styleClass="sub-header-label" text="Execution Target"/>
+                        <VBox spacing="8">
+                             <CheckBox fx:id="chkUseGpu" text="Enable CUDA/MPS Hardware Acceleration"/>
+                             <CheckBox fx:id="chkUseWsl" text="Execute via WSL 2 Container"/>
+                        </VBox>
+                    </VBox>
+                </VBox>
+            </GridPane>
+            <!-- 4. RUN TRAINING -->
+            <VBox spacing="12" styleClass="card" VBox.vgrow="NEVER">
+                <padding><Insets top="16" right="30" bottom="16" left="30"/></padding>
+                <Label styleClass="header-label" text="4. Launch Training"/>
+                <HBox spacing="12" alignment="CENTER_LEFT">
+                    <Button fx:id="runTrainingBtn" text="▶ Run Training"
+                            styleClass="button-accent" onAction="#handleRunTraining"
+                            style="-fx-background-color: #238636; -fx-text-fill: white; -fx-pref-width: 160; -fx-cursor: hand;"/>
+                    <Button fx:id="stopTrainingBtn" text="⏹ Stop" disable="true"
+                            onAction="#handleStopTraining"
+                            style="-fx-background-color: #b62324; -fx-text-fill: white; -fx-pref-width: 80; -fx-cursor: hand;"/>
+                    <ProgressBar fx:id="trainingProgress" progress="0" HBox.hgrow="ALWAYS" prefHeight="24"/>
+                    <Label fx:id="trainingStatusLabel" text="Ready to train."
+                           style="-fx-text-fill: #8b949e; -fx-font-size: 11px;"/>
+                </HBox>
+                <TextArea fx:id="trainingLogArea" editable="false" wrapText="true" prefHeight="100"
+                          promptText="Training log will appear here..."
+                          style="-fx-font-family: 'Consolas'; -fx-font-size: 11px;"/>
+            </VBox>
+
+        </VBox>
+    </content>
+</ScrollPane>

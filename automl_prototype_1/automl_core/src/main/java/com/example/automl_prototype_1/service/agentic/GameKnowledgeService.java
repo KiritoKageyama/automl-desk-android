@@ -9,10 +9,10 @@ import com.example.automl_prototype_1.service.LogService;
  */
 public class GameKnowledgeService {
 
-    private final LocalLlmService llmService;
+    private final com.example.automl_prototype_1.service.OllamaService llmService;
 
     public GameKnowledgeService() {
-        this.llmService = new LocalLlmService();
+        this.llmService = com.example.automl_prototype_1.service.OllamaService.getInstance();
     }
 
     /**

@@ -19,11 +19,11 @@ import java.util.Map;
  */
 public class StrategyInjectorService {
 
-    private final LocalLlmService llmService;
+    private final com.example.automl_prototype_1.service.OllamaService llmService;
     private final ObjectMapper mapper;
 
     public StrategyInjectorService() {
-        this.llmService = new LocalLlmService();
+        this.llmService = com.example.automl_prototype_1.service.OllamaService.getInstance();
         this.mapper = new ObjectMapper();
     }
 

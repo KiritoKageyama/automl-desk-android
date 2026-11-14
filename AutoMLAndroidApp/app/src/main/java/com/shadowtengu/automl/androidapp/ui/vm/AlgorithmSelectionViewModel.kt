@@ -9,15 +9,16 @@ import androidx.lifecycle.viewModelScope
 import com.example.automl_prototype_1.model.Dataset
 import com.example.automl_prototype_1.model.ExecutionResult
 import com.example.automl_prototype_1.service.AppStateService
-import com.example.automl_prototype_1.service.ExecutionService
-import com.example.automl_prototype_1.service.PreprocessorService
+import com.example.automl_prototype_1.service.pipeline.ExecutionService
+import com.example.automl_prototype_1.service.pipeline.PreprocessorService
 import com.example.automl_prototype_1.service.agentic.AgenticAdvisor
 import com.example.automl_prototype_1.dataprovider.CsvDataProvider
 import com.example.automl_prototype_1.service.IClassifier
-import com.example.automl_prototype_1.classifier.KnnClassifier
-import com.example.automl_prototype_1.classifier.RandomForestClassifier
-import com.example.automl_prototype_1.classifier.SvmClassifier
-import com.example.automl_prototype_1.classifier.XGBoostClassifier
+import com.example.automl_prototype_1.classifier.ml.KnnClassifier
+import com.example.automl_prototype_1.classifier.ml.RandomForestClassifier
+import com.example.automl_prototype_1.classifier.ml.SvmClassifier
+import com.example.automl_prototype_1.classifier.ml.XGBoostClassifier
+import com.example.automl_prototype_1.model.PreprocessingConfig
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -191,9 +192,11 @@ class AlgorithmSelectionViewModel : ViewModel() {
                 try {
                     finalDataset = withContext(Dispatchers.Default) {
                         Log.d("AlgoSelectVM", "Running Preprocessing Pipeline...")
-                        val strategy = appStateService.scalingStrategy ?: "Standardization"
                         val target = appStateService.targetColumnName ?: "Class"
-                        preprocessorService.runPreprocessingPipeline(loadedDataset!!, target, strategy)
+                        val config = appStateService.preprocessingConfig ?: PreprocessingConfig().also {
+                            it.scalingStrategy = appStateService.scalingStrategy ?: "Standardization"
+                        }
+                        preprocessorService.runPreprocessingPipeline(loadedDataset!!, target, config)
                     }
                     Log.i("AlgoSelectVM", "Preprocessing complete.")
                 } catch (prepEx: Exception) {

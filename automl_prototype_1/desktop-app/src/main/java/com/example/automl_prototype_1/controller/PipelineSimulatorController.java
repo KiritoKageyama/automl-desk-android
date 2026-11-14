@@ -16,6 +16,17 @@ import java.util.Map;
 
 public class PipelineSimulatorController {
 
+    private final Runnable runPipelineAction;
+
+    public PipelineSimulatorController() {
+        this(() -> {
+        });
+    }
+
+    public PipelineSimulatorController(Runnable runPipelineAction) {
+        this.runPipelineAction = runPipelineAction;
+    }
+
     @FXML
     private Label datasetNameLabel;
     @FXML
@@ -290,25 +301,45 @@ public class PipelineSimulatorController {
 
         LogService.info("PipelineSim", "User starting Custom Pipeline: " + algo + " + " + clf + " (" + scaling + ")");
 
-        // Logic to trigger run on Dashboard
-        // Option 1: Pass config to DashboardController?
-        // Option 2: Execute here? (Not ideal, Dashboard manages threads/progress)
-        // Option 3: Use AppStateService to set "Custom Pipeline Config" and tell
-        // Dashboard to run.
+        String algorithmId = Map.of(
+                "Binary PSO", "BPSO",
+                "Genetic Algorithm", "GA",
+                "Simulated Annealing", "SA",
+                "Atom Search Optimization", "ASO",
+                "Water Wave Optimization", "WWO",
+                "Parallel Local Search", "PLS")
+                .get(algo);
 
-        // For now, let's just log it and show a Dialog that it's "Ready to Run"
-        // or call a method if we had reference.
-        // Given constraints, I'll update AppState and show alert.
+        String classifierName = Map.of(
+                "K-Nearest Neighbors", "KNN",
+                "Support Vector Machine", "SVM")
+                .getOrDefault(clf, clf);
 
-        Alert alert = new Alert(Alert.AlertType.INFORMATION);
-        alert.setTitle("Pipeline Execution");
-        alert.setHeaderText("Configuration Ready");
-        alert.setContentText(
-                "This configuration has been set as the active Manual Override.\nGo to Dashboard and click 'Start AutoML' to execute it.");
-        alert.showAndWait();
+        com.example.automl_prototype_1.service.IClassifier classifier =
+                com.example.automl_prototype_1.registry.ClassifierRegistry.getInstance()
+                        .getClassifier(classifierName);
 
-        // Set Overrides
-        // This requires mapping Strings to actual logic, which is tricky.
-        // Effectively this is "Manual Overrides" Part 2
+        if (algorithmId == null || classifier == null) {
+            Alert alert = new Alert(Alert.AlertType.ERROR);
+            alert.setTitle("Unsupported Configuration");
+            alert.setHeaderText("The selected pipeline cannot be created.");
+            alert.setContentText("Algorithm: " + algo + "\nClassifier: " + clf);
+            alert.showAndWait();
+            return;
+        }
+
+        appStateService.setSelectedAlgorithmNames(List.of(algorithmId));
+        appStateService.setSelectedBaseModelName(classifierName);
+        appStateService.setSelectedClassifier(classifier);
+        appStateService.setScalingStrategy(scaling);
+        com.example.automl_prototype_1.model.PreprocessingConfig preprocessing =
+                appStateService.getPreprocessingConfig();
+        if (preprocessing == null) {
+            preprocessing = new com.example.automl_prototype_1.model.PreprocessingConfig();
+        }
+        preprocessing.setScalingStrategy(scaling);
+        appStateService.setPreprocessingConfig(preprocessing);
+
+        runPipelineAction.run();
     }
 }

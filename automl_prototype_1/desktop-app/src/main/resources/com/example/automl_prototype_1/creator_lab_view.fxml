@@ -2,7 +2,10 @@
 
 <?import javafx.geometry.Insets?>
 <?import javafx.scene.control.Button?>
+<?import javafx.scene.control.ComboBox?>
 <?import javafx.scene.control.Label?>
+<?import javafx.scene.control.Tab?>
+<?import javafx.scene.control.TabPane?>
 <?import javafx.scene.control.TextArea?>
 <?import javafx.scene.control.TextField?>
 <?import javafx.scene.layout.HBox?>
@@ -34,7 +37,9 @@
 
                         <HBox spacing="10.0" VBox.vgrow="NEVER">
                             <TextField fx:id="promptField" promptText="Enter your request..." HBox.hgrow="ALWAYS" />
+                            <ComboBox fx:id="templateSelector" promptText="Select template..." prefWidth="200" />
                             <Button fx:id="generateBtn" text="Generate Code" style="-fx-background-color: #9b59b6; -fx-text-fill: white;" />
+                            <Button fx:id="undoBtn" text="↩ Undo" style="-fx-background-color: #444; -fx-text-fill: white;" disable="true" />
                         </HBox>
 
                         <HBox spacing="15.0" VBox.vgrow="ALWAYS">
@@ -58,6 +63,30 @@
                 </content>
             </Tab>
             
+            <Tab text="Data Stream">
+                <content>
+                    <VBox spacing="15.0" style="-fx-padding: 15;">
+                        <Label text="Real-Time Data Monitor" style="-fx-font-weight: bold; -fx-font-size: 16px;" />
+                        
+                        <HBox spacing="10.0" alignment="CENTER_LEFT">
+                            <Button fx:id="btnStartStream" text="Start Stream" style="-fx-background-color: #27ae60; -fx-text-fill: white;" />
+                            <Button fx:id="btnStopStream" text="Stop Stream" disable="true" />
+                            <Button fx:id="btnRecordCsv" text="Record to CSV" />
+                            <Label fx:id="lblStreamStatus" text="Status: Idle" textFill="gray" />
+                        </HBox>
+
+                        <javafx.scene.chart.LineChart fx:id="liveDataChart" title="Live Sensor Data" animated="false" createSymbols="false" VBox.vgrow="ALWAYS">
+                            <xAxis>
+                                <javafx.scene.chart.NumberAxis label="Time (s)" forceZeroInRange="false" />
+                            </xAxis>
+                            <yAxis>
+                                <javafx.scene.chart.NumberAxis label="Value" autoRanging="true" />
+                            </yAxis>
+                        </javafx.scene.chart.LineChart>
+                    </VBox>
+                </content>
+            </Tab>
+
             <Tab text="Model Hub &amp; Extensions">
                 <content>
                     <fx:include source="model_hub_view.fxml"/>

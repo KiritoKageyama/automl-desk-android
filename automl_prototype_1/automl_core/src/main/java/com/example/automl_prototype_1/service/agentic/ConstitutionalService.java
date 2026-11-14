@@ -27,13 +27,28 @@ public class ConstitutionalService {
     private final SystemMonitorService systemMonitor;
     private boolean strictMode = false; // "Absolute Rules Abider" mode
 
+    private static ConstitutionalService instance;
+
+    public static synchronized ConstitutionalService getInstance() {
+        if (instance == null) {
+            instance = new ConstitutionalService();
+        }
+        return instance;
+    }
+
     public ConstitutionalService() {
+        if (instance != null) {
+            // Already initialized, just copy state or warn?
+            // Ideally we shouldn't have new() called if singleton exists.
+            // But for backward compatibility with existing `new` calls, we'll allow it but
+            // maybe suppress logs?
+            // Actually, we can just let it reload for now, but fixing the CALLERS is
+            // better.
+        }
         this.mapper = new ObjectMapper();
         this.configPath = Paths.get(System.getProperty("user.dir"), "automl_core", "src", "main", "resources",
                 CONSTITUTION_FILE);
         this.systemMonitor = new SystemMonitorService();
-        // Fallback for production/runtime if src doesn't exist (e.g. running from jar)
-        // For prototype, we prefer src to allow persistence across rebuilds.
 
         loadRules();
     }

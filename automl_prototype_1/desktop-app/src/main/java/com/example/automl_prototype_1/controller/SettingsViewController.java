@@ -12,6 +12,8 @@ public class SettingsViewController {
     @FXML
     private Button lightThemeButton;
     @FXML
+    private Button tradingThemeButton;
+    @FXML
     private CheckBox darkModeCheckBox;
 
     @FXML
@@ -65,6 +67,20 @@ public class SettingsViewController {
     @FXML
     private Button askAiPreprocessingBtn;
 
+    // UI Modular Toggles
+    @FXML
+    private CheckBox chkShowMl;
+    @FXML
+    private CheckBox chkShowDl;
+    @FXML
+    private CheckBox chkShowCnn;
+    @FXML
+    private CheckBox chkShowLlm;
+    @FXML
+    private CheckBox chkShowGenAi;
+    @FXML
+    private CheckBox chkShowRl;
+
     // AI Safety Controls
     @FXML
     private Button emergencyStopBtn;
@@ -77,6 +93,12 @@ public class SettingsViewController {
     @FXML
     private javafx.scene.control.Label safetyStatusLabel;
 
+    private Runnable onVisibilityChanged;
+
+    public void setOnVisibilityChanged(Runnable callback) {
+        this.onVisibilityChanged = callback;
+    }
+
     public SettingsViewController() {
         // No-arg constructor
     }
@@ -88,9 +110,11 @@ public class SettingsViewController {
 
         // --- Call the static methods on DashboardApplication ---
         if (darkThemeButton != null)
-            darkThemeButton.setOnAction(e -> DashboardApplication.setTheme("trading"));
+            darkThemeButton.setOnAction(e -> DashboardApplication.setTheme("atelier"));
         if (lightThemeButton != null)
             lightThemeButton.setOnAction(e -> DashboardApplication.setTheme("light"));
+        if (tradingThemeButton != null)
+            tradingThemeButton.setOnAction(e -> DashboardApplication.setTheme("trading"));
 
         // --- Hardware / Performance Settings ---
         if (gpuCheckBox != null) {
@@ -263,6 +287,50 @@ public class SettingsViewController {
             askAiPreprocessingBtn.setOnAction(e -> handleAskAiPreprocessing());
         }
 
+        // --- Modular Navigation UI ---
+        if (chkShowMl != null) {
+            chkShowMl.setSelected(appState.isShowMl());
+            chkShowMl.selectedProperty().addListener((obs, ov, nv) -> {
+                appState.setShowMl(nv);
+                notifyVisibilityChange();
+            });
+        }
+        if (chkShowDl != null) {
+            chkShowDl.setSelected(appState.isShowDl());
+            chkShowDl.selectedProperty().addListener((obs, ov, nv) -> {
+                appState.setShowDl(nv);
+                notifyVisibilityChange();
+            });
+        }
+        if (chkShowCnn != null) {
+            chkShowCnn.setSelected(appState.isShowCnn());
+            chkShowCnn.selectedProperty().addListener((obs, ov, nv) -> {
+                appState.setShowCnn(nv);
+                notifyVisibilityChange();
+            });
+        }
+        if (chkShowLlm != null) {
+            chkShowLlm.setSelected(appState.isShowLlm());
+            chkShowLlm.selectedProperty().addListener((obs, ov, nv) -> {
+                appState.setShowLlm(nv);
+                notifyVisibilityChange();
+            });
+        }
+        if (chkShowGenAi != null) {
+            chkShowGenAi.setSelected(appState.isShowGenAi());
+            chkShowGenAi.selectedProperty().addListener((obs, ov, nv) -> {
+                appState.setShowGenAi(nv);
+                notifyVisibilityChange();
+            });
+        }
+        if (chkShowRl != null) {
+            chkShowRl.setSelected(appState.isShowRl());
+            chkShowRl.selectedProperty().addListener((obs, ov, nv) -> {
+                appState.setShowRl(nv);
+                notifyVisibilityChange();
+            });
+        }
+
         // --- Ollama Settings ---
         if (ollamaEnabledCheckBox != null) {
             ollamaEnabledCheckBox.setSelected(appState.isOllamaEnabled());
@@ -289,6 +357,12 @@ public class SettingsViewController {
 
         // --- AI Safety Controls ---
         initializeSafetyControls();
+    }
+
+    private void notifyVisibilityChange() {
+        if (onVisibilityChanged != null) {
+            onVisibilityChanged.run();
+        }
     }
 
     private void initializeSafetyControls() {
@@ -319,7 +393,8 @@ public class SettingsViewController {
         emergencyStopBtn.setDisable(true);
         new Thread(() -> {
             try {
-                com.example.automl_prototype_1.service.agentic.LocalLlmService llm = new com.example.automl_prototype_1.service.agentic.LocalLlmService();
+                com.example.automl_prototype_1.service.OllamaService llm = com.example.automl_prototype_1.service.OllamaService
+                        .getInstance();
                 llm.emergencyStop();
                 javafx.application.Platform.runLater(() -> {
                     updateSafetyStatus("🔴 EMERGENCY STOP executed. All AI processes killed.");
@@ -336,7 +411,8 @@ public class SettingsViewController {
 
     private void handleInterruptAi() {
         try {
-            com.example.automl_prototype_1.service.agentic.LocalLlmService llm = new com.example.automl_prototype_1.service.agentic.LocalLlmService();
+            com.example.automl_prototype_1.service.OllamaService llm = com.example.automl_prototype_1.service.OllamaService
+                    .getInstance();
             llm.interrupt();
             updateSafetyStatus("⏸ Interrupt signal sent. Current AI generation will stop.");
         } catch (Exception ex) {
@@ -348,7 +424,8 @@ public class SettingsViewController {
         clearAiCacheBtn.setDisable(true);
         new Thread(() -> {
             try {
-                com.example.automl_prototype_1.service.agentic.LocalLlmService llm = new com.example.automl_prototype_1.service.agentic.LocalLlmService();
+                com.example.automl_prototype_1.service.OllamaService llm = com.example.automl_prototype_1.service.OllamaService
+                        .getInstance();
                 llm.clearCache();
                 javafx.application.Platform.runLater(() -> {
                     updateSafetyStatus("🗑 AI Cache cleared. LLM context reset.");

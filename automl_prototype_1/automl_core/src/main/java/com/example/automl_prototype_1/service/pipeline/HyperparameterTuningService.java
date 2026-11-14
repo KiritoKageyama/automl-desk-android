@@ -5,7 +5,7 @@ import com.example.automl_prototype_1.service.IClassifier;
 import com.example.automl_prototype_1.algorithm.*;
 import com.example.automl_prototype_1.model.Dataset;
 import com.example.automl_prototype_1.model.ExecutionResult;
-import java.util.concurrent.ThreadLocalRandom;
+import com.example.automl_prototype_1.registry.AlgorithmRegistry;
 
 public class HyperparameterTuningService {
 
@@ -18,7 +18,10 @@ public class HyperparameterTuningService {
 
         for (int i = 0; i < trials; i++) {
             System.out.println("--- Trial " + (i + 1) + "/" + trials + " ---");
-            OptimizationAlgorithm algorithmInstance = createRandomizedAlgorithm(algorithmName);
+            // Heartbeat between trials so multi-trial tuning is not flagged stuck
+            com.example.automl_prototype_1.service.agentic.TrainingWatchdogService.getInstance().heartbeat();
+
+            OptimizationAlgorithm algorithmInstance = AlgorithmRegistry.getInstance().createRandomized(algorithmName);
             if (algorithmInstance == null) {
                 System.err.println("Cannot tune unknown algorithm: " + algorithmName);
                 break;
@@ -41,29 +44,5 @@ public class HyperparameterTuningService {
             bestResult.setAlgorithmName(bestResult.getAlgorithmName() + " (Tuned)");
         }
         return bestResult;
-    }
-
-    private OptimizationAlgorithm createRandomizedAlgorithm(String name) {
-        var rand = ThreadLocalRandom.current();
-
-        int popSize = rand.nextInt(20, 51); // populationSize between 20-50
-        int maxIter = rand.nextInt(50, 151); // maxIterations between 50-150
-
-        return switch (name) {
-            case "Genetic Algorithm", "GA" -> new GeneticAlgorithm(popSize, maxIter);
-            case "BPSO" -> new BinaryParticleSwarmOptimization(popSize, maxIter);
-            case "WWO" -> new WaterWaveOptimization(popSize, maxIter);
-            case "ASO" -> new AtomSearchOptimization(popSize, maxIter);
-            case "IGPSO" -> new IGPSO(popSize, maxIter);
-            case "Simulated Annealing", "SA" -> {
-                double initialTemp = rand.nextDouble(0.8, 1.2);
-                double coolingRate = rand.nextDouble(0.99, 0.999);
-                yield new SimulatedAnnealing(maxIter * 5, initialTemp, coolingRate);
-            }
-            case "GWO", "Grey Wolf Optimizer" -> new GreyWolfOptimizer(popSize, maxIter);
-            case "DE", "Differential Evolution" -> new DifferentialEvolution(popSize, maxIter);
-            case "PLS", "Parallel Local Search" -> new ParallelLocalSearchAlgorithm(maxIter);
-            default -> null;
-        };
     }
 }

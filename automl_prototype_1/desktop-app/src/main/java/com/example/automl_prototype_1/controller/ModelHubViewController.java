@@ -1,14 +1,12 @@
 package com.example.automl_prototype_1.controller;
 
 import com.example.automl_prototype_1.service.LibraryManagerService;
-import com.example.automl_prototype_1.classifier.GenericHuggingFaceClassifier;
 import com.example.automl_prototype_1.viewmodel.AlgoSelectViewModel;
 import javafx.application.Platform;
 import javafx.fxml.FXML;
 import javafx.scene.control.Button;
 import javafx.scene.control.TextArea;
 import javafx.scene.control.TextField;
-import java.util.concurrent.Executors;
 
 public class ModelHubViewController {
 
@@ -32,12 +30,6 @@ public class ModelHubViewController {
     // that list?
     // AlgoSelectViewModel calls 'getAvailableClassifiers'. We need to make that
     // dynamic.
-
-    private AlgoSelectViewModel sharedViewModel; // Injected
-
-    public void setSharedViewModel(AlgoSelectViewModel vm) {
-        this.sharedViewModel = vm;
-    }
 
     @FXML
     private void initialize() {

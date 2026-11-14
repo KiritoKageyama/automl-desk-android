@@ -8,10 +8,10 @@ import com.example.automl_prototype_1.service.LogService;
  */
 public class ExpertStrategyService {
 
-    private final LocalLlmService llmService;
+    private final com.example.automl_prototype_1.service.OllamaService llmService;
 
     public ExpertStrategyService() {
-        this.llmService = new LocalLlmService();
+        this.llmService = com.example.automl_prototype_1.service.OllamaService.getInstance();
     }
 
     /**

@@ -107,6 +107,21 @@ fun SettingsScreen(
                     onCheckedChange = { viewModel.setTuningEnabled(it) }
                 )
             }
+
+            Divider()
+
+            Text("Desktop Remote Monitor", style = MaterialTheme.typography.titleMedium)
+            Text(
+                "Watch live AutoML jobs running on your PC over LAN.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Button(
+                onClick = { navController.navigate(com.shadowtengu.automl.androidapp.ui.navigation.AppDestinations.MONITOR_ROUTE) },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("Open Desktop Monitor")
+            }
         }
     }
 }

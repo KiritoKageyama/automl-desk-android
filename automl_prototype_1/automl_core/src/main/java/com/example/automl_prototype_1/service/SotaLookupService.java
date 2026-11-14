@@ -1,7 +1,6 @@
 package com.example.automl_prototype_1.service;
 
 import com.example.automl_prototype_1.model.Dataset;
-import com.example.automl_prototype_1.service.agentic.LocalLlmService;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.net.URLEncoder;
@@ -23,11 +22,11 @@ public class SotaLookupService {
 
     private static final String API_URL = "https://paperswithcode.com/api/v1/datasets/?q=";
     private final com.fasterxml.jackson.databind.ObjectMapper objectMapper;
-    private final LocalLlmService llmService;
+    private final OllamaService llmService;
 
     public SotaLookupService() {
         this.objectMapper = new com.fasterxml.jackson.databind.ObjectMapper();
-        this.llmService = new LocalLlmService();
+        this.llmService = OllamaService.getInstance();
     }
 
     /**

@@ -1,12 +1,13 @@
 package com.example.automl_prototype_1.algorithm;
 
+import com.example.automl_prototype_1.service.agentic.TrainingWatchdogService;
 import com.example.automl_prototype_1.service.progress.ProgressTrackingService;
 import com.example.automl_prototype_1.model.Dataset;
 import com.example.automl_prototype_1.model.ExecutionResult;
 import com.example.automl_prototype_1.service.IClassifier;
-import com.example.automl_prototype_1.classifier.cpu.RandomForestClassifier;
-import com.example.automl_prototype_1.classifier.cpu.SvmClassifier;
-import com.example.automl_prototype_1.classifier.cpu.XGBoostClassifier;
+import com.example.automl_prototype_1.classifier.ml.RandomForestClassifier;
+import com.example.automl_prototype_1.classifier.ml.SvmClassifier;
+import com.example.automl_prototype_1.classifier.ml.XGBoostClassifier;
 import smile.validation.metric.Accuracy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -86,11 +87,34 @@ public abstract class AbstractFeatureSelectionAlgorithm implements OptimizationA
     }
 
     protected AbstractFeatureSelectionAlgorithm(int kFolds, int patience) {
-        this.kFolds = kFolds > 1 ? kFolds : 2;
+        // Prefer UI / AppState k-folds when set; otherwise honor constructor fallback.
+        this.kFolds = resolveKFolds(kFolds);
         this.patience = patience;
         // Use ThreadLocalRandom with current time to ensure different behavior across
         // algorithms
         this.random = new Random(System.nanoTime() + Thread.currentThread().hashCode());
+    }
+
+    /**
+     * Uses AppStateService.getKFolds() when available (from ML / Algo Select UI).
+     * Clamped to [2, 20]. Falls back to the constructor value for unit tests.
+     */
+    protected static int resolveKFolds(int fallback) {
+        int base = fallback > 1 ? fallback : 5;
+        try {
+            int fromUi = com.example.automl_prototype_1.service.AppStateService.getInstance().getKFolds();
+            if (fromUi > 1) {
+                return Math.min(20, Math.max(2, fromUi));
+            }
+        } catch (Throwable ignored) {
+            // Standalone / early tests without AppState
+        }
+        return Math.min(20, Math.max(2, base));
+    }
+
+    /** Exposed for diagnostics / Results labeling. */
+    public int getKFolds() {
+        return kFolds;
     }
 
     public void setUseProxy(boolean useProxy) {
@@ -164,6 +188,9 @@ public abstract class AbstractFeatureSelectionAlgorithm implements OptimizationA
             List<Double> populationDiversityHistory = new ArrayList<>(); // New list (Phase 6)
 
             for (int t = 0; t < getMaxIterations(); t++) {
+                // Mid-iteration heartbeat so long FS runs are not flagged as stuck
+                TrainingWatchdogService.getInstance().heartbeat();
+
                 long iterStartTime = System.currentTimeMillis();
                 updatePopulation(t, numFeatures, dataset, searchClassifier, folds);
 
@@ -598,27 +625,8 @@ public abstract class AbstractFeatureSelectionAlgorithm implements OptimizationA
             throw new IllegalArgumentException("A valid classifier must be provided.");
         }
         IClassifier classifier = (IClassifier) configuration.get("classifier");
-        // Ensure configuration is passed to optimize if it relies on it (it does now
-        // for scaling)
-        // optimize() signature is optimize(Dataset, IClassifier, int, int). It does NOT
-        // take config map.
-        // I need to update optimize() signature OR pass the map differently.
-        // Wait, optimize() uses 'this.kFolds' etc.
-        // But I added 'scalingStrategy = conf.get(...)' in optimize() in my PREVIOUS
-        // chunk instruction.
-        // BUT optimize() as defined in the file DOES NOT take the map!
-        // I must overload or update optimize to take the map.
-        // Currently 'execute' calls 'optimize'.
-        // I will update execute() here, but I also need to update optimize() signature
-        // in the file.
-        // Or better: Store the config in a field? No, thread safety.
-        // I will change optimize to take the Map.
         return this.optimize(dataset, classifier, configuration, 1, 1);
     }
-
-    // Dummy placeholder for the optimize method signature change which I will do in
-    // the next step
-    // preventing compilation error in this chunk context check.
 
     protected abstract void initialize(int numFeatures, Dataset dataset, IClassifier classifier, List<Fold> folds);
 
@@ -629,28 +637,6 @@ public abstract class AbstractFeatureSelectionAlgorithm implements OptimizationA
 
     protected abstract double getBestFitness();
 
-    // Concrete implementation or abstract definition required.
-    // Since this class is abstract, we can leave it abstract or provide dummy.
-    // But the error was "does not override or implement ... from supertype".
-    // Wait, OptimizationAlgorithm doesn't enforce getAverageFitness unless I added
-    // it there?
-    // The error was "method does not override or implement a method from a
-    // supertype" at line 104 which is @Override verify
-    // public final ExecutionResult optimize(Dataset dataset, IClassifier
-    // classifier, Map<String, Object> configuration, int trialNum, int totalTrials)
-    // The interface might have a different signature.
-    // OptimizationAlgorithm typically has: ExecutionResult execute(Dataset, Map);
-    // Let's check OptimizationAlgorithm.java to be sure.
-    // BUT for safely fixing THIS step without viewing that file yet, I will remove
-    // @Override if the signature doesn't match,
-    // OR likely invalid since I just edited ExecutionService to call it this way.
-    // Actually, I saw HyperparameterTuningService calling optimize(Dataset,
-    // IClassifier, int, int) which also failed.
-    // I suspect OptimizationAlgorithm interface is missing these methods.
-
-    // I will check OptimizationAlgorithm next.
-    // For AFSA, I will add getAverageFitness() concrete implementation returning 0
-    // for now to satisfy my OWN call in line 172.
     protected double getAverageFitness() {
         return 0.0;
     }
@@ -736,19 +722,6 @@ public abstract class AbstractFeatureSelectionAlgorithm implements OptimizationA
 
                 // 2. Calculate Metrics (Common)
                 if (predictions != null) {
-                    // DEBUG: Check accuracy calc
-                    if (i == 0) { // Log first fold only
-                        int matches = 0;
-                        for (int p = 0; p < predictions.length && p < testLabels.length; p++) {
-                            if (predictions[p] == testLabels[p])
-                                matches++;
-                        }
-                        System.out.println("[DEBUG-AS] Fold 0 Predictions (First 20): " + java.util.Arrays
-                                .toString(java.util.Arrays.copyOf(predictions, Math.min(20, predictions.length))));
-                        System.out.println("[DEBUG-AS] Fold 0 Truth       (First 20): " + java.util.Arrays
-                                .toString(java.util.Arrays.copyOf(testLabels, Math.min(20, testLabels.length))));
-                        System.out.println("[DEBUG-AS] Accuracy Raw Check: " + matches + "/" + predictions.length);
-                    }
                     totalScore += calculateFoldScore(testLabels, predictions);
                 }
             }
